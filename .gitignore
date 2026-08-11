@@ -1,0 +1,9 @@
+.env
+__pycache__/
+.trailer_tools/
+trailer-output/raw/
+trailer-output/*
+!trailer-output/rouge-hate-trailer-14s-final.mp4
+audit-output/
+*.pyc
+.DS_Store
