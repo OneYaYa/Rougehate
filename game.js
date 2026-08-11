@@ -135,7 +135,9 @@ const forgeTiers = [
   { tier: 2, roman: "II", budget: 104, label: "第二件异想", hint: "补齐短板，或与第一件武器形成状态协同" },
   { tier: 3, roman: "III", budget: 140, label: "最后的异想", hint: "高风险、高上限，用于击穿憎恨奇点" },
 ];
-const openingWaveSizes = [6, 8, 10];
+const openingWaveSizes = [8, 9, 10];
+const stageHealthScales = [1.08, 1.62, 2.75];
+const stageSpawnPressure = [1.28, 1.08, 1];
 const stageEncounters = [
   { offset: 75, type: "migration", kicker: "MIGRATION SURGE", title: "高速星兽迁徙潮" },
   { offset: 150, type: "elite", kicker: "ELITE HUNT", title: "雷鸣核心狩猎" },
@@ -372,6 +374,7 @@ let pendingAttacks = [];
 let currentBoss = null;
 let currentUpgradeChoices = [];
 let currentMutationChoices = [];
+let currentMutationWish = "";
 let synergyCache = null;
 
 const touch = { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0 };
@@ -747,6 +750,29 @@ function runtimeExplosion(weapon) {
   return base * bonuses.area * (hasSynergy("breach") ? 1.2 : 1);
 }
 
+function beamStyleForWeapon(weapon) {
+  const form = inferVisualForm(weapon);
+  if (["staff", "orb", "tome"].includes(form)) return "ribbon";
+  if (form === "cannon") return "lance";
+  if (form === "bow") return "arrow";
+  return "tracer";
+}
+
+function ringStyleForWeapon(weapon) {
+  const form = inferVisualForm(weapon);
+  if (form === "tome") return "runes";
+  if (form === "orb" || weapon.delivery === "aura") return "field";
+  if (form === "drone" || weapon.delivery === "orbit") return "orbit";
+  return "pulse";
+}
+
+function slashStyleForWeapon(weapon) {
+  const form = inferVisualForm(weapon);
+  if (form === "daggers") return "daggers";
+  if (weaponMutation(weapon, "crescent")) return "crescent";
+  return "cleave";
+}
+
 function damageReduction() {
   const stationary = state.isMoving ? 0 : bonuses.stationaryArmor;
   return Math.min(0.65, bonuses.armor + stationary + (hasSynergy("fortress") ? 0.10 : 0));
@@ -957,6 +983,7 @@ function resetGame() {
   currentBoss = null;
   currentUpgradeChoices = [];
   currentMutationChoices = [];
+  currentMutationWish = "";
   entityId = 1;
   ui.gameOver.hidden = true;
   ui.forge.hidden = true;
@@ -1018,11 +1045,13 @@ function updateHUD() {
   const stageIndex = state.stageIndex;
   const stageElapsed = Math.max(0, state.time - stageIndex * STAGE_DURATION);
   const stageProgress = state.time >= RUN_DURATION ? 1 : Math.min(1, stageElapsed / STAGE_DURATION);
+  const stageLockedByBoss = currentBoss && !currentBoss.dead && Math.floor(state.time / STAGE_DURATION) > stageIndex;
   ui.stageLabel.textContent = stages[stageIndex].label;
   ui.stageFill.style.width = `${stageProgress * 100}%`;
   ui.stageFill.style.background = stages[stageIndex].color;
   ui.stageTimer.textContent = state.openingWaveTier === stageIndex + 1
     ? `首波 ${String(state.openingWaveRemaining).padStart(2, "0")}`
+    : stageLockedByBoss ? "首领锁定"
     : state.time >= RUN_DURATION ? "核心暴露" : formatTime(Math.max(0, STAGE_DURATION - stageElapsed));
   const skillDuration = skillCooldownDuration();
   ui.skillFill.style.width = `${Math.max(0, Math.min(1, 1 - state.skillCooldown / skillDuration)) * 100}%`;
@@ -1042,10 +1071,12 @@ function createWeaponCard(weapon) {
   card.className = "weapon-card";
   card.style.setProperty("--weapon-color", weapon.color);
 
-  const icon = document.createElement("div");
-  icon.className = "weapon-icon";
-  icon.textContent = visual.glyph;
+  const icon = document.createElement("canvas");
+  icon.className = "weapon-icon weapon-model-icon";
+  icon.width = 96;
+  icon.height = 72;
   icon.title = `${visual.label} · ${meta.label}`;
+  requestAnimationFrame(() => drawWeaponIconCanvas(icon, weapon));
 
   const body = document.createElement("div");
   body.className = "weapon-meta";
@@ -1316,7 +1347,7 @@ function spawnEnemy(initial = false, openingWaveTier = 0, forcedType = null) {
   const template = cosmicBestiary[type];
   const difficulty = difficultyModes[state.difficulty] || difficultyModes.normal;
   const stageIndex = state.stageIndex;
-  const stageHealthScale = [1, 1.75, 2.85][stageIndex];
+  const stageHealthScale = stageHealthScales[stageIndex] || stageHealthScales.at(-1);
   const stageCombatTime = Math.max(0, Math.min(STAGE_DURATION, state.time - stageIndex * STAGE_DURATION));
   const scale = (1 + stageCombatTime / (STAGE_DURATION * 3)) * stageHealthScale * difficulty.health;
   const enemy = {
@@ -1326,7 +1357,7 @@ function spawnEnemy(initial = false, openingWaveTier = 0, forcedType = null) {
     y: player.y + Math.sin(angle) * edge,
     hp: template.hp * scale,
     maxHp: template.hp * scale,
-    speed: template.speed * (1 + Math.min(1, state.time / RUN_DURATION) * .55),
+    speed: template.speed * (1 + Math.min(1, state.time / RUN_DURATION) * .48),
     radius: template.radius,
     damage: template.damage * difficulty.damage,
     xp: template.xp,
@@ -1395,14 +1426,14 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
       ["null_reaper", "star_leech", "singularity_eye"],
     ];
     const swiftTypes = migrationPools[stageIndex] || migrationPools.at(-1);
-    const count = 8 + stageIndex * 3;
+    const count = 10 + stageIndex * 3;
     for (let index = 0; index < count; index += 1) {
       spawnEnemy(false, 0, swiftTypes[index % swiftTypes.length]);
     }
     addLog(`${encounter.title}：${count} 个高速目标同时进入战区。`, true);
   } else {
     const eliteProfiles = [
-      { type: "shield_jelly", count: 2, title: "蓝幕护盾结阵" },
+      { type: "shield_jelly", count: 1, title: "蓝幕护盾结阵" },
       { type: "spore_mother", count: 2, title: "紫孢育母入侵" },
       { type: "thunder_orb", count: 3, title: "雷鸣核心狩猎" },
     ];
@@ -1427,8 +1458,8 @@ function announce(kicker, title) {
 
 function spawnBoss(index) {
   const definitions = [
-    { name: "环月监视者 · K-01", hp: 2400, speed: 34, radius: 39, damage: 20, color: "#58e6ff", xp: 45 },
-    { name: "星云织梦母体 · M-07", hp: 7800, speed: 39, radius: 46, damage: 24, color: "#a78bfa", xp: 70 },
+    { name: "环月监视者 · K-01", hp: 1950, speed: 32, radius: 39, damage: 18, color: "#58e6ff", xp: 45 },
+    { name: "星云织梦母体 · M-07", hp: 7350, speed: 38, radius: 46, damage: 24, color: "#a78bfa", xp: 70 },
     { name: "憎恨奇点 · HATE", hp: 18000, speed: 44, radius: 54, damage: 29, color: "#ff5a72", xp: 110 },
   ];
   const template = definitions[index];
@@ -1579,6 +1610,7 @@ function fireBeam(weapon, damageScale = 1) {
       x2: player.x + dx * runtimeRange(weapon), y2: player.y + dy * runtimeRange(weapon),
       width: weapon.projectile_size * (offset ? .68 : 1), color: weapon.color,
       life: 0.13, maxLife: 0.13,
+      source: "weapon", form: inferVisualForm(weapon), style: beamStyleForWeapon(weapon), fork: offset !== 0,
     });
   }
   audio.shoot("beam");
@@ -1595,7 +1627,10 @@ function fireAura(weapon, damageScale = 1) {
       hit = true;
     }
   }
-  effects.push({ type: "ring", x: player.x, y: player.y, radius: runtimeRange(weapon), color: weapon.color, life: 0.34, maxLife: 0.34 });
+  effects.push({
+    type: "ring", x: player.x, y: player.y, radius: runtimeRange(weapon), color: weapon.color,
+    life: 0.34, maxLife: 0.34, source: "weapon", form: inferVisualForm(weapon), style: ringStyleForWeapon(weapon),
+  });
   audio.shoot("aura");
   weapon.recoil = .45;
   return hit || enemies.length > 0;
@@ -1626,10 +1661,24 @@ function fireMelee(weapon, damageScale = 1) {
     damageEnemy(hit.enemy, runtimeDamage(weapon) * damageScale, weapon, hit.dx / length, hit.dy / length);
   }
   const slashLife = warriorSwing ? .38 : .26;
-  effects.push({ type: "slash", x: player.x, y: player.y, angle, radius: range * (warriorSwing ? 1.14 : 1), arc, color: weapon.color, life: slashLife, maxLife: slashLife, heavy: warriorSwing });
+  const slashStyle = slashStyleForWeapon(weapon);
+  if (slashStyle === "daggers") {
+    for (const offset of [-.18, .18]) {
+      effects.push({
+        type: "slash", x: player.x, y: player.y, angle: angle + offset, radius: range * .86,
+        arc: Math.min(arc * .58, .72), color: weapon.color, life: .22, maxLife: .22,
+        heavy: false, source: "weapon", form: inferVisualForm(weapon), style: "daggers",
+      });
+    }
+  } else {
+    effects.push({
+      type: "slash", x: player.x, y: player.y, angle, radius: range * (warriorSwing ? 1.14 : 1), arc, color: weapon.color,
+      life: slashLife, maxLife: slashLife, heavy: warriorSwing, source: "weapon", form: inferVisualForm(weapon), style: slashStyle,
+    });
+  }
   if (warriorSwing) {
-    effects.push({ type: "slash", x: player.x, y: player.y, angle: angle - .11, radius: range * .94, arc: arc * .86, color: selectedArchetype.accent_color, life: .3, maxLife: .3, heavy: true });
-    effects.push({ type: "ring", x: player.x + Math.cos(angle) * range * .48, y: player.y + Math.sin(angle) * range * .48, radius: range * .68, color: weapon.color, life: .24, maxLife: .24 });
+    effects.push({ type: "slash", x: player.x, y: player.y, angle: angle - .11, radius: range * .94, arc: arc * .86, color: selectedArchetype.accent_color, life: .3, maxLife: .3, heavy: true, source: "weapon", form: inferVisualForm(weapon), style: "cleave" });
+    effects.push({ type: "ring", x: player.x + Math.cos(angle) * range * .48, y: player.y + Math.sin(angle) * range * .48, radius: range * .68, color: weapon.color, life: .24, maxLife: .24, source: "weapon", form: inferVisualForm(weapon), style: "impact" });
     state.shake = Math.max(state.shake, 5.5);
   }
   weapon.recoil = 1;
@@ -1643,7 +1692,7 @@ function fireMelee(weapon, damageScale = 1) {
       pierceLeft: 2 + bonuses.pierce, ricochetsLeft: 0, weapon, color: weapon.color,
       hitIds: new Set(), mutationChild: true, canProc: true, dead: false,
     });
-    effects.push({ type: "slash", x: player.x, y: player.y, angle, radius: range * 1.65, arc: .32, color: weapon.color, life: .3, maxLife: .3 });
+    effects.push({ type: "slash", x: player.x, y: player.y, angle, radius: range * 1.65, arc: .32, color: weapon.color, life: .3, maxLife: .3, source: "weapon", form: inferVisualForm(weapon), style: "crescent" });
   }
   audio.shoot("melee");
   return true;
@@ -1822,7 +1871,7 @@ function updateProjectiles(dt) {
         if (next) {
           projectile.angle = Math.atan2(next.y - projectile.y, next.x - projectile.x);
           projectile.ricochetsLeft -= 1;
-          effects.push({ type: "beam", x1: projectile.x, y1: projectile.y, x2: next.x, y2: next.y, width: 1.5, color: projectile.color, life: .1, maxLife: .1 });
+          effects.push({ type: "beam", x1: projectile.x, y1: projectile.y, x2: next.x, y2: next.y, width: 1.5, color: projectile.color, life: .1, maxLife: .1, source: "weapon", form: inferVisualForm(projectile.weapon), style: "chain" });
           break;
         }
       }
@@ -1894,7 +1943,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
       const dx = target.x - enemy.x;
       const dy = target.y - enemy.y;
       const length = Math.hypot(dx, dy) || 1;
-      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 2.5, color: "#8ee8ff", life: .14, maxLife: .14 });
+      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 2.5, color: "#8ee8ff", life: .14, maxLife: .14, source: "weapon", form: inferVisualForm(weapon), style: "chain" });
       damageEnemy(target, baseDamage * (.14 + bonuses.chainDamage), chainWeapon, dx / length, dy / length, false);
     }
   }
@@ -1908,7 +1957,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
       const dx = target.x - enemy.x;
       const dy = target.y - enemy.y;
       const length = Math.hypot(dx, dy) || 1;
-      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 2.8, color: weapon.color, life: .15, maxLife: .15 });
+      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 2.8, color: weapon.color, life: .15, maxLife: .15, source: "weapon", form: inferVisualForm(weapon), style: "chain" });
       damageEnemy(target, baseDamage * mutationPower(.38), chainWeapon, dx / length, dy / length, false);
     }
   }
@@ -1919,7 +1968,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
       const dy = echoTarget.y - enemy.y;
       const length = Math.hypot(dx, dy) || 1;
       const echoWeapon = { ...weapon, crit_chance: 0, explosion_radius: 0, mutations: [] };
-      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: echoTarget.x, y2: echoTarget.y, width: 2, color: "#f1f0eb", life: .12, maxLife: .12 });
+      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: echoTarget.x, y2: echoTarget.y, width: 2, color: "#f1f0eb", life: .12, maxLife: .12, source: "weapon", form: inferVisualForm(weapon), style: "tracer" });
       damageEnemy(echoTarget, baseDamage * .36, echoWeapon, dx / length, dy / length, false);
     }
   }
@@ -2012,7 +2061,7 @@ function killEnemy(enemy, weapon = null, proc = {}) {
       target.burnUntil = Math.max(target.burnUntil, state.time + 1.8 * bonuses.statusDuration);
       target.burnColor = enemy.burnColor;
       target.burnSource = sourceWeapon;
-      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 1.6, color: enemy.burnColor || "#7cf29a", life: .18, maxLife: .18 });
+      effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: target.x, y2: target.y, width: 1.6, color: enemy.burnColor || "#7cf29a", life: .18, maxLife: .18, source: "weapon", form: inferVisualForm(sourceWeapon), style: "ember" });
     }
   }
 
@@ -2155,6 +2204,8 @@ function updateEnemyAttack(enemy, dt) {
     color: enemy.accent,
     life: enemy.attackWindup,
     maxLife: enemy.attackWindup,
+    source: "enemy",
+    style: "telegraph",
   });
 }
 
@@ -2224,7 +2275,7 @@ function updateEnemies(dt) {
           enemy.aimAngle = Math.atan2(dy, dx);
           enemy.attackWindup = .58;
           enemy.abilityTimer = 3.4 + Math.random() * 1.4;
-          effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: enemy.x + Math.cos(enemy.aimAngle) * 230, y2: enemy.y + Math.sin(enemy.aimAngle) * 230, width: 3, color: enemy.accent, life: .58, maxLife: .58 });
+          effects.push({ type: "beam", x1: enemy.x, y1: enemy.y, x2: enemy.x + Math.cos(enemy.aimAngle) * 230, y2: enemy.y + Math.sin(enemy.aimAngle) * 230, width: 3, color: enemy.accent, life: .58, maxLife: .58, source: "enemy", style: "telegraph" });
           effects.push({ type: "ring", x: enemy.x, y: enemy.y, radius: enemy.radius * 1.8, color: enemy.accent, life: .58, maxLife: .58 });
         }
       }
@@ -2412,11 +2463,12 @@ function update(dt) {
     const count = state.stageIndex > 0 && Math.random() < 0.25 ? 2 : 1;
     for (let i = 0; i < count; i += 1) spawnEnemy();
     const runProgress = Math.min(1, state.time / RUN_DURATION);
-    state.spawnClock = Math.max(0.20, (0.82 - runProgress * 0.60) / difficulty.spawn);
+    const pressure = stageSpawnPressure[state.stageIndex] || 1;
+    state.spawnClock = Math.max(0.24, (0.78 - runProgress * 0.52) / (difficulty.spawn * pressure));
   }
   const timedStageIndex = Math.min(2, Math.floor(state.time / STAGE_DURATION));
   const currentStageRewardClaimed = state.forgeOpened[state.stageIndex];
-  if (timedStageIndex > state.stageIndex && state.openingWaveTier === 0 && currentStageRewardClaimed) {
+  if (timedStageIndex > state.stageIndex && state.openingWaveTier === 0 && currentStageRewardClaimed && !currentBoss) {
     state.stageIndex += 1;
     announce("PROTOCOL SHIFT", stages[state.stageIndex].label);
     addLog(`${stages[state.stageIndex].label}启动，敌群发生变异。`, true);
@@ -2433,7 +2485,7 @@ function update(dt) {
     }
   }
   for (let index = 0; index < BOSS_TIMES.length; index += 1) {
-    if (state.time >= BOSS_TIMES[index] && !state.bossSpawned[index] && !currentBoss) {
+    if (state.time >= BOSS_TIMES[index] && index <= state.stageIndex && state.openingWaveTier === 0 && state.forgeOpened[index] && !state.bossSpawned[index] && !currentBoss) {
       spawnBoss(index);
       break;
     }
@@ -2864,6 +2916,88 @@ function drawEnemyProjectiles() {
   ctx.restore();
 }
 
+function drawProjectileBody(projectile) {
+  const form = inferVisualForm(projectile.weapon || {});
+  const r = Math.max(3, projectile.radius);
+  const color = projectile.color || "#f1f0eb";
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = color;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(255,255,255,.82)";
+  ctx.lineWidth = Math.max(1, r * .22);
+
+  if (form === "bow") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.3, r * .35);
+    ctx.beginPath(); ctx.moveTo(-r * 4.2, 0); ctx.lineTo(r * 3.4, 0); ctx.stroke();
+    ctx.fillStyle = "#f5f8ff";
+    ctx.beginPath(); ctx.moveTo(r * 4.1, 0); ctx.lineTo(r * 2.2, -r * .9); ctx.lineTo(r * 2.6, 0); ctx.lineTo(r * 2.2, r * .9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = color;
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 2.2, 0); ctx.lineTo(-r * 3.5, side * r * .9); ctx.lineTo(-r * 2.8, 0); ctx.closePath(); ctx.fill(); }
+  } else if (form === "cannon") {
+    const trail = ctx.createLinearGradient(-r * 6, 0, r * 2, 0);
+    trail.addColorStop(0, `${color}00`);
+    trail.addColorStop(.5, `${color}33`);
+    trail.addColorStop(1, `${color}bb`);
+    ctx.fillStyle = trail;
+    ctx.fillRect(-r * 6, -r * .45, r * 6, r * .9);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.ellipse(r * .4, 0, r * 1.35, r, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.8)";
+    ctx.beginPath(); ctx.arc(r * .85, -r * .22, r * .28, 0, Math.PI * 2); ctx.fill();
+  } else if (["staff", "orb", "tome"].includes(form)) {
+    ctx.save();
+    ctx.rotate(state.time * 5 + projectile.x * .002);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = .75;
+    polygon(0, 0, r * 1.6, form === "tome" ? 4 : 6, Math.PI / 4);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = form === "orb" ? `${color}cc` : "#eef8ff";
+    polygon(0, 0, r * .9, 4, Math.PI / 4);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = .35;
+    ctx.fillRect(-r * 4.8, -1, r * 4.4, 2);
+    ctx.globalAlpha = 1;
+  } else if (["blade", "daggers"].includes(form)) {
+    ctx.fillStyle = "#edf3fb";
+    ctx.beginPath();
+    ctx.moveTo(r * 3.2, 0);
+    ctx.lineTo(-r * 1.5, -r * .9);
+    ctx.lineTo(-r * .4, 0);
+    ctx.lineTo(-r * 1.5, r * .9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, r * .25);
+    ctx.beginPath(); ctx.moveTo(-r * 1.2, 0); ctx.lineTo(r * 2.5, 0); ctx.stroke();
+    ctx.globalAlpha = .32;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.ellipse(-r * 2.3, 0, r * 2.4, r * .36, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (form === "drone") {
+    ctx.fillStyle = "#222936";
+    polygon(0, 0, r * 1.5, 4, Math.PI / 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillRect(-r * 2.8, -r * .2, r * 1.4, r * .4);
+    ctx.fillRect(r * 1.4, -r * .2, r * 1.4, r * .4);
+    ctx.beginPath(); ctx.arc(0, 0, r * .42, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = color;
+    ctx.fillRect(-r * 1.7, -r * .5, r * 3.5, r);
+    ctx.fillStyle = "#f6f8ff";
+    ctx.fillRect(r * .9, -r * .32, r * 1.2, r * .64);
+    ctx.globalAlpha = .35;
+    ctx.fillStyle = color;
+    ctx.fillRect(-r * 5.2, -1, r * 4.6, 2);
+    ctx.globalAlpha = 1;
+  }
+}
+
 function drawProjectiles() {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -2872,12 +3006,7 @@ function drawProjectiles() {
     ctx.save();
     ctx.translate(point.x, point.y);
     ctx.rotate(projectile.angle);
-    ctx.shadowBlur = 14;
-    ctx.shadowColor = projectile.color;
-    ctx.fillStyle = projectile.color;
-    ctx.fillRect(-projectile.radius * 1.8, -projectile.radius * .55, projectile.radius * 3.6, projectile.radius * 1.1);
-    ctx.globalAlpha = .35;
-    ctx.fillRect(-projectile.radius * 4, -1, projectile.radius * 4, 2);
+    drawProjectileBody(projectile);
     ctx.restore();
   }
   ctx.restore();
@@ -2944,16 +3073,40 @@ function drawWeaponModel(renderCtx, weapon, x, y, angle = 0, scale = 1, alpha = 
     renderCtx.fillStyle = color; renderCtx.beginPath(); renderCtx.moveTo(37, 0); renderCtx.lineTo(29, -4); renderCtx.lineTo(29, 4); renderCtx.closePath(); renderCtx.fill();
   } else if (form === "staff") {
     renderCtx.strokeStyle = "#d6d5dc"; renderCtx.lineWidth = 4;
-    renderCtx.beginPath(); renderCtx.moveTo(-23, 0); renderCtx.lineTo(31, 0); renderCtx.stroke();
-    renderCtx.strokeStyle = color; renderCtx.lineWidth = 2;
-    renderCtx.beginPath(); renderCtx.arc(34, 0, 9, 0, Math.PI * 2); renderCtx.stroke();
-    renderCtx.fillStyle = color; polygonWithContext(renderCtx, 34, 0, 5, 6, state.time * 2); renderCtx.fill();
+    renderCtx.beginPath(); renderCtx.moveTo(-26, 0); renderCtx.lineTo(24, 0); renderCtx.stroke();
+    renderCtx.strokeStyle = color; renderCtx.lineWidth = 1.5;
+    for (const side of [-1, 1]) {
+      renderCtx.beginPath();
+      renderCtx.moveTo(-15, side * 4);
+      renderCtx.quadraticCurveTo(3, side * 13, 25, side * 6);
+      renderCtx.stroke();
+    }
+    renderCtx.lineWidth = 2.4;
+    renderCtx.beginPath(); renderCtx.arc(32, 0, 11, 0, Math.PI * 2); renderCtx.stroke();
+    renderCtx.beginPath(); renderCtx.arc(32, 0, 6, 0, Math.PI * 2); renderCtx.stroke();
+    renderCtx.fillStyle = color; polygonWithContext(renderCtx, 32, 0, 5, 6, state.time * 2); renderCtx.fill();
   } else if (form === "orb") {
     drawSingularityCore(renderCtx, 8, 0, 10, color, state.time * 2, .72);
   } else if (form === "tome") {
     renderCtx.fillStyle = "#25222e"; renderCtx.fillRect(-21, -15, 42, 30); renderCtx.strokeRect(-21, -15, 42, 30);
     renderCtx.fillStyle = color; renderCtx.fillRect(-19, -13, 18, 26); renderCtx.fillRect(1, -13, 18, 26);
     renderCtx.strokeStyle = "#ecebf0"; renderCtx.beginPath(); renderCtx.arc(9, 0, 5, 0, Math.PI * 2); renderCtx.stroke();
+  } else if (form === "drone") {
+    renderCtx.fillStyle = "#202633";
+    polygonWithContext(renderCtx, 0, 0, 18, 6, Math.PI / 6); renderCtx.fill(); renderCtx.stroke();
+    renderCtx.fillStyle = color;
+    for (const side of [-1, 1]) {
+      renderCtx.save();
+      renderCtx.translate(side * 25, 0);
+      renderCtx.rotate(state.time * 4 * side);
+      renderCtx.fillRect(-12, -2, 24, 4);
+      renderCtx.fillRect(-2, -12, 4, 24);
+      renderCtx.restore();
+      renderCtx.strokeStyle = `${color}aa`;
+      renderCtx.beginPath(); renderCtx.moveTo(side * 9, 0); renderCtx.lineTo(side * 20, 0); renderCtx.stroke();
+    }
+    renderCtx.fillStyle = "#0c111a"; renderCtx.beginPath(); renderCtx.arc(0, 0, 7, 0, Math.PI * 2); renderCtx.fill();
+    renderCtx.fillStyle = color; renderCtx.beginPath(); renderCtx.arc(2, -1, 3, 0, Math.PI * 2); renderCtx.fill();
   } else {
     renderCtx.fillStyle = "#292b34"; polygonWithContext(renderCtx, 0, 0, 21, 6, Math.PI / 6); renderCtx.fill(); renderCtx.stroke();
     renderCtx.fillStyle = color; renderCtx.fillRect(-18, -3, 36, 6);
@@ -2961,6 +3114,26 @@ function drawWeaponModel(renderCtx, weapon, x, y, angle = 0, scale = 1, alpha = 
     renderCtx.fillStyle = "white"; renderCtx.beginPath(); renderCtx.arc(12, -1, 2, 0, Math.PI * 2); renderCtx.fill();
   }
   renderCtx.restore();
+}
+
+function drawWeaponIconCanvas(iconCanvas, weapon) {
+  const iconCtx = iconCanvas.getContext("2d");
+  const w = iconCanvas.width;
+  const h = iconCanvas.height;
+  iconCtx.clearRect(0, 0, w, h);
+  const color = weapon.color || "#f1f0eb";
+  const gradient = iconCtx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, "rgba(255,255,255,.035)");
+  gradient.addColorStop(.7, `${color}22`);
+  iconCtx.fillStyle = gradient;
+  iconCtx.fillRect(0, 0, w, h);
+  iconCtx.strokeStyle = `${color}66`;
+  iconCtx.lineWidth = 1;
+  iconCtx.strokeRect(.5, .5, w - 1, h - 1);
+  iconCtx.save();
+  iconCtx.globalCompositeOperation = "lighter";
+  drawWeaponModel(iconCtx, weapon, w * .48, h * .54, 0, 1.05, 1);
+  iconCtx.restore();
 }
 
 function polygonWithContext(renderCtx, x, y, radius, sides, rotation = 0) {
@@ -2981,9 +3154,9 @@ function drawEquippedWeapons() {
     const side = index % 2 ? -1 : 1;
     const row = Math.floor(index / 2);
     const angle = facing + side * (1.45 + row * .2);
-    drawWeaponModel(ctx, weapon, width / 2 + Math.cos(angle) * 28, height / 2 + Math.sin(angle) * 28, angle, .54, .55);
+    drawWeaponModel(ctx, weapon, width / 2 + Math.cos(angle) * 30, height / 2 + Math.sin(angle) * 30, angle, .64, .62);
   });
-  if (held[0]) drawWeaponModel(ctx, held[0], width / 2 + player.moveX * 12, height / 2 + player.moveY * 12, facing, .78, 1);
+  if (held[0]) drawWeaponModel(ctx, held[0], width / 2 + player.moveX * 15, height / 2 + player.moveY * 15, facing, .92, 1);
 }
 
 function drawOrbitals() {
@@ -2999,6 +3172,247 @@ function drawOrbitals() {
   ctx.restore();
 }
 
+function drawBeamEffect(effect, start, end, alpha) {
+  const color = effect.color || "#f1f0eb";
+  const beamWidth = Math.max(1, Number(effect.width) || 3);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length;
+  const ny = dx / length;
+  const style = effect.style || (effect.source === "weapon" ? "tracer" : "telegraph");
+  ctx.strokeStyle = color;
+  ctx.shadowColor = color;
+  ctx.lineCap = "round";
+
+  if (style === "telegraph") {
+    ctx.globalAlpha = alpha * .5;
+    ctx.lineWidth = beamWidth;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  if (["chain", "ember"].includes(style)) {
+    const segments = 7;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(1, beamWidth * 1.2);
+    ctx.shadowBlur = style === "ember" ? 12 : 20;
+    ctx.beginPath();
+    for (let index = 0; index <= segments; index += 1) {
+      const t = index / segments;
+      const jitter = (Math.sin(t * 19 + state.time * 18 + start.x * .01) + Math.cos(t * 13 + end.y * .01)) * (style === "ember" ? 3 : 7);
+      const x = start.x + dx * t + nx * jitter;
+      const y = start.y + dy * t + ny * jitter;
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = alpha * .45;
+    ctx.lineWidth *= 2.4;
+    ctx.stroke();
+    return;
+  }
+
+  if (style === "ribbon") {
+    ctx.shadowBlur = 22;
+    for (const side of [-1, 1]) {
+      ctx.globalAlpha = alpha * .52;
+      ctx.lineWidth = Math.max(1, beamWidth * .45);
+      ctx.beginPath();
+      for (let index = 0; index <= 12; index += 1) {
+        const t = index / 12;
+        const wave = Math.sin(t * Math.PI * 3 + state.time * 10 + side) * 7 * side;
+        const x = start.x + dx * t + nx * wave;
+        const y = start.y + dy * t + ny * wave;
+        if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(1.5, beamWidth * .55);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.globalAlpha = alpha * .8;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(end.x, end.y, Math.max(2, (effect.width || 4) * .55), 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+
+  if (style === "lance") {
+    ctx.shadowBlur = 24;
+    ctx.globalAlpha = alpha * .8;
+    ctx.lineWidth = Math.max(4, beamWidth * 2.4);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(2, beamWidth);
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha * .75;
+    ctx.beginPath(); ctx.ellipse(end.x, end.y, Math.max(8, beamWidth * 1.6), Math.max(3, beamWidth * .55), Math.atan2(dy, dx), 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+
+  if (style === "arrow") {
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = Math.max(1.5, beamWidth);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(end.x - dx / length * 15 + nx * 6, end.y - dy / length * 15 + ny * 6);
+    ctx.lineTo(end.x - dx / length * 15 - nx * 6, end.y - dy / length * 15 - ny * 6);
+    ctx.closePath(); ctx.fill();
+    return;
+  }
+
+  ctx.globalAlpha = alpha;
+  ctx.shadowBlur = 18;
+  ctx.lineWidth = Math.max(1, beamWidth * alpha);
+  ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+  ctx.globalAlpha = alpha * .35;
+  ctx.lineWidth = beamWidth * 3;
+  ctx.stroke();
+}
+
+function drawRingEffect(effect, point, alpha) {
+  const progress = 1 - alpha;
+  const color = effect.color || "#f1f0eb";
+  const style = effect.style || "pulse";
+  const radius = effect.radius * (0.82 + progress * .18);
+  ctx.strokeStyle = color;
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 2 + alpha * 3;
+
+  if (style === "field") {
+    for (let layer = 0; layer < 3; layer += 1) {
+      ctx.globalAlpha = alpha * (.9 - layer * .22);
+      ctx.lineWidth = Math.max(1, 3 - layer * .6);
+      ctx.beginPath(); ctx.arc(point.x, point.y, radius * (.78 + layer * .14), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = alpha * .45;
+    for (let index = 0; index < 8; index += 1) {
+      const angle = state.time * .8 + index / 8 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(point.x + Math.cos(angle) * radius * .2, point.y + Math.sin(angle) * radius * .2);
+      ctx.lineTo(point.x + Math.cos(angle) * radius, point.y + Math.sin(angle) * radius);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (style === "runes") {
+    ctx.beginPath(); ctx.arc(point.x, point.y, radius, 0, Math.PI * 2); ctx.stroke();
+    ctx.save();
+    ctx.translate(point.x, point.y);
+    ctx.rotate(state.time * .6);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha * .7;
+    for (let index = 0; index < 6; index += 1) {
+      const angle = index / 6 * Math.PI * 2;
+      ctx.save();
+      ctx.translate(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      ctx.rotate(angle + Math.PI / 4);
+      ctx.fillRect(-3, -3, 6, 6);
+      ctx.restore();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (style === "orbit") {
+    for (let index = 0; index < 4; index += 1) {
+      const start = state.time * 1.4 + index * Math.PI / 2;
+      ctx.beginPath(); ctx.arc(point.x, point.y, radius, start, start + .82); ctx.stroke();
+    }
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawSlashEffect(effect, point, alpha) {
+  const progress = 1 - alpha;
+  const style = effect.style || "cleave";
+  if (style === "daggers") {
+    ctx.strokeStyle = effect.color;
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = effect.color;
+    ctx.lineCap = "round";
+    for (let layer = 0; layer < 2; layer += 1) {
+      ctx.lineWidth = Math.max(1, (5 - layer * 2) * alpha);
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, effect.radius * (.68 + layer * .16 + progress * .1), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(255,255,255,.9)";
+    ctx.lineWidth = Math.max(1, 1.4 * alpha);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, effect.radius * (.9 + progress * .08), effect.angle - effect.arc * .3, effect.angle + effect.arc * .3);
+    ctx.stroke();
+    return;
+  }
+
+  if (style === "crescent") {
+    ctx.strokeStyle = "rgba(255,255,255,.92)";
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = effect.color;
+    ctx.lineWidth = Math.max(1, 3.5 * alpha);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, effect.radius * (.78 + progress * .1), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
+    ctx.stroke();
+    ctx.strokeStyle = effect.color;
+    ctx.lineWidth = Math.max(1, 9 * alpha);
+    ctx.globalAlpha = alpha * .34;
+    ctx.stroke();
+    return;
+  }
+
+  if (effect.heavy) {
+    const inner = effect.radius * (.24 + progress * .08);
+    const outer = effect.radius * (.95 + progress * .08);
+    const gradient = ctx.createRadialGradient(point.x, point.y, inner, point.x, point.y, outer);
+    gradient.addColorStop(0, "rgba(255,255,255,0)");
+    gradient.addColorStop(.48, `${effect.color}18`);
+    gradient.addColorStop(1, `${effect.color}66`);
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = alpha * .9;
+    ctx.beginPath();
+    ctx.moveTo(point.x + Math.cos(effect.angle - effect.arc / 2) * inner, point.y + Math.sin(effect.angle - effect.arc / 2) * inner);
+    ctx.arc(point.x, point.y, outer, effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
+    ctx.lineTo(point.x + Math.cos(effect.angle + effect.arc / 2) * inner, point.y + Math.sin(effect.angle + effect.arc / 2) * inner);
+    ctx.arc(point.x, point.y, inner, effect.angle + effect.arc / 2, effect.angle - effect.arc / 2, true);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.strokeStyle = effect.color;
+  ctx.globalAlpha = alpha;
+  ctx.shadowBlur = effect.heavy ? 30 : 18;
+  ctx.shadowColor = effect.color;
+  ctx.lineCap = "round";
+  const layers = effect.heavy ? 5 : 3;
+  for (let layer = 0; layer < layers; layer += 1) {
+    ctx.lineWidth = Math.max(1, ((effect.heavy ? 10 : 5) - layer * 1.5) * alpha);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, effect.radius * ((effect.heavy ? .52 : .62) + layer * (effect.heavy ? .1 : .12) + progress * .08), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
+    ctx.stroke();
+  }
+  if (effect.heavy) {
+    ctx.strokeStyle = "rgba(255,255,255,.92)";
+    ctx.lineWidth = Math.max(1, 3 * alpha);
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, effect.radius * (1 + progress * .08), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
+    ctx.stroke();
+  }
+}
+
 function drawEffects() {
   for (const effect of effects) {
     const alpha = Math.max(0, effect.life / effect.maxLife);
@@ -3007,65 +3421,13 @@ function drawEffects() {
     if (effect.type === "beam") {
       const start = worldToScreen(effect.x1, effect.y1);
       const end = worldToScreen(effect.x2, effect.y2);
-      ctx.strokeStyle = effect.color;
-      ctx.globalAlpha = alpha;
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = effect.color;
-      ctx.lineWidth = Math.max(1, effect.width * alpha);
-      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
-      ctx.globalAlpha = alpha * .35;
-      ctx.lineWidth = effect.width * 3;
-      ctx.stroke();
+      drawBeamEffect(effect, start, end, alpha);
     } else if (effect.type === "ring") {
       const point = worldToScreen(effect.x, effect.y);
-      const progress = 1 - alpha;
-      ctx.strokeStyle = effect.color;
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = 2 + alpha * 3;
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = effect.color;
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, effect.radius * (0.82 + progress * .18), 0, Math.PI * 2);
-      ctx.stroke();
+      drawRingEffect(effect, point, alpha);
     } else if (effect.type === "slash") {
       const point = worldToScreen(effect.x, effect.y);
-      const progress = 1 - alpha;
-      if (effect.heavy) {
-        const inner = effect.radius * (.24 + progress * .08);
-        const outer = effect.radius * (.95 + progress * .08);
-        const gradient = ctx.createRadialGradient(point.x, point.y, inner, point.x, point.y, outer);
-        gradient.addColorStop(0, "rgba(255,255,255,0)");
-        gradient.addColorStop(.48, `${effect.color}18`);
-        gradient.addColorStop(1, `${effect.color}66`);
-        ctx.fillStyle = gradient;
-        ctx.globalAlpha = alpha * .9;
-        ctx.beginPath();
-        ctx.moveTo(point.x + Math.cos(effect.angle - effect.arc / 2) * inner, point.y + Math.sin(effect.angle - effect.arc / 2) * inner);
-        ctx.arc(point.x, point.y, outer, effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
-        ctx.lineTo(point.x + Math.cos(effect.angle + effect.arc / 2) * inner, point.y + Math.sin(effect.angle + effect.arc / 2) * inner);
-        ctx.arc(point.x, point.y, inner, effect.angle + effect.arc / 2, effect.angle - effect.arc / 2, true);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.strokeStyle = effect.color;
-      ctx.globalAlpha = alpha;
-      ctx.shadowBlur = effect.heavy ? 30 : 18;
-      ctx.shadowColor = effect.color;
-      ctx.lineCap = "round";
-      const layers = effect.heavy ? 5 : 3;
-      for (let layer = 0; layer < layers; layer += 1) {
-        ctx.lineWidth = Math.max(1, ((effect.heavy ? 10 : 5) - layer * 1.5) * alpha);
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, effect.radius * ((effect.heavy ? .52 : .62) + layer * (effect.heavy ? .1 : .12) + progress * .08), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
-        ctx.stroke();
-      }
-      if (effect.heavy) {
-        ctx.strokeStyle = "rgba(255,255,255,.92)";
-        ctx.lineWidth = Math.max(1, 3 * alpha);
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, effect.radius * (1 + progress * .08), effect.angle - effect.arc / 2, effect.angle + effect.arc / 2);
-        ctx.stroke();
-      }
+      drawSlashEffect(effect, point, alpha);
     } else if (effect.type === "screen") {
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = alpha * .14;
@@ -3517,10 +3879,105 @@ function renderMutationLoading() {
     const title = document.createElement("h3");
     title.textContent = ["武器开始做梦…", "旧伤口正在说话…", "某种形状正在孵化…"][index];
     const description = document.createElement("p");
-    description.textContent = "异梦会改变攻击方式，但不会凭空多出一件武器。";
+    description.textContent = currentMutationWish
+      ? `正在回应「${currentMutationWish.slice(0, 28)}」。`
+      : "异梦会改变攻击方式，但不会凭空多出一件武器。";
     card.append(icon, label, title, description);
     ui.upgradeOptions.append(card);
   }
+}
+
+function mutationWishSuggestions() {
+  const suggestions = [];
+  if (weapons.some((weapon) => weapon.delivery === "melee")) {
+    suggestions.push(["剑气外放", "让近战挥砍甩出能飞行的月牙刃光"]);
+  }
+  if (weapons.some((weapon) => weapon.delivery === "beam")) {
+    suggestions.push(["棱镜折射", "让光束被旧棱镜分成三道不同角度"]);
+  }
+  if (weapons.some((weapon) => weapon.delivery === "aura")) {
+    suggestions.push(["余波心跳", "让领域脉冲结束后在原地再跳一次"]);
+  }
+  if (weapons.some((weapon) => weapon.delivery === "orbit")) {
+    suggestions.push(["卫星齐射", "让环绕武器周期性向外喷出星屑"]);
+  }
+  suggestions.push(
+    ["连锁闪电", "让命中的伤口向附近敌人钻出电弧"],
+    ["弹体分裂", "让主弹命中后孵出两枚侧向子弹"],
+    ["死亡开花", "让被击杀的目标向四周喷出星屑"],
+  );
+  return suggestions.slice(0, 3);
+}
+
+function renderMutationWishForm(round = state.mutationRound || 1) {
+  currentMutationChoices = [];
+  ui.upgradeOptions.replaceChildren();
+  ui.upgradeTitle.textContent = `武器异梦 · 第 ${round} 夜`;
+  ui.upgradeSubtitle.textContent = "写下你希望本轮武器特效如何进化，异梦会把它编译成三种攻击形态。";
+  ui.upgradeRerolls.textContent = "输入愿望后生成异变";
+  ui.reroll.disabled = true;
+
+  const panel = document.createElement("article");
+  panel.className = "mutation-wish-panel";
+  panel.style.setProperty("--rarity-color", "#58e6ff");
+
+  const heading = document.createElement("div");
+  heading.className = "mutation-wish-heading";
+  const label = document.createElement("span");
+  label.textContent = "WEAPON DREAM / 玩家输入";
+  const title = document.createElement("h3");
+  title.textContent = "把这次异梦说清楚";
+  heading.append(label, title);
+
+  const weaponRow = document.createElement("div");
+  weaponRow.className = "mutation-loadout-row";
+  for (const weapon of weapons) {
+    const chip = document.createElement("span");
+    const visual = visualMeta[inferVisualForm(weapon)] || visualMeta.rifle;
+    chip.textContent = `${visual.label} · ${weapon.name}`;
+    weaponRow.append(chip);
+  }
+
+  const quickRow = document.createElement("div");
+  quickRow.className = "mutation-wish-quick";
+  for (const [labelText, wish] of mutationWishSuggestions()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.mutationWish = wish;
+    button.textContent = labelText;
+    quickRow.append(button);
+  }
+
+  const form = document.createElement("form");
+  form.className = "mutation-wish-form";
+  form.dataset.mutationWishForm = "true";
+  const frame = document.createElement("div");
+  frame.className = "input-frame";
+  const textarea = document.createElement("textarea");
+  textarea.maxLength = 180;
+  textarea.rows = 3;
+  textarea.required = true;
+  textarea.dataset.mutationWishInput = "true";
+  textarea.placeholder = "例如：让巨剑挥出能飞回来的红色月牙，命中后再爆出星屑";
+  const count = document.createElement("span");
+  count.className = "char-count";
+  const countValue = document.createElement("b");
+  countValue.dataset.mutationWishCount = "true";
+  countValue.textContent = "0";
+  count.append(countValue, "/180");
+  frame.append(textarea, count);
+  const actions = document.createElement("div");
+  actions.className = "mutation-wish-actions";
+  const submit = document.createElement("button");
+  submit.className = "primary-button";
+  submit.type = "submit";
+  submit.textContent = "让异梦成形";
+  actions.append(submit);
+  form.append(frame, actions);
+
+  panel.append(heading, weaponRow, quickRow, form);
+  ui.upgradeOptions.append(panel);
+  setTimeout(() => textarea.focus(), 60);
 }
 
 function openMutation(round = 1) {
@@ -3531,25 +3988,30 @@ function openMutation(round = 1) {
   state.mutationRound = Math.max(state.mutationRound, round);
   ui.upgrade.hidden = false;
   ui.upgradeTitle.textContent = `武器异梦 · 第 ${round} 夜`;
-  ui.upgradeSubtitle.textContent = "武器在梦里学会了另一种攻击方式。选择一个醒来后仍会存在的结果。";
+  ui.upgradeSubtitle.textContent = "写下你希望本轮武器特效如何进化。";
   currentMutationChoices = [];
-  renderMutationLoading();
-  ui.upgradeRerolls.textContent = `刷新次数 ${state.rerolls}`;
-  ui.reroll.disabled = state.rerolls <= 0;
+  currentMutationWish = "";
+  renderMutationWishForm(round);
   addLog(`第 ${round} 夜，武器把本局拾到的东西带进了梦里。`, true);
-  generateMutations();
 }
 
-async function generateMutations() {
+async function generateMutations(wish = currentMutationWish) {
+  currentMutationWish = String(wish || "").trim().slice(0, 180);
+  if (!currentMutationWish) {
+    renderMutationWishForm(state.mutationRound);
+    return;
+  }
   currentMutationChoices = [];
   renderMutationLoading();
   ui.reroll.disabled = true;
+  ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」正在改变现有武器。`;
   try {
     const response = await fetch("/api/generate-mutations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId,
+        wish: currentMutationWish,
         mutationRound: state.mutationRound,
         archetype: { role: selectedArchetype?.role, trait: selectedArchetype?.trait, level: state.level },
         buildTags: ownedBuildTags(),
@@ -3577,13 +4039,14 @@ async function generateMutations() {
     card.append(title, description);
     ui.upgradeOptions.append(card);
   } finally {
-    ui.reroll.disabled = state.rerolls <= 0;
+    ui.reroll.disabled = state.rerolls <= 0 || currentMutationChoices.length === 0;
     ui.upgradeRerolls.textContent = `刷新次数 ${state.rerolls}`;
   }
 }
 
 function renderMutationChoices() {
   ui.upgradeOptions.replaceChildren();
+  ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」形成了三种攻击形态，选择一个醒来后仍会存在的结果。`;
   currentMutationChoices.forEach((choice, index) => {
     const [mechanicLabel, glyph] = mutationMechanicMeta[choice.mechanic] || [choice.mechanic, "AI"];
     const card = document.createElement("button");
@@ -3659,6 +4122,7 @@ function selectMutation(index) {
   state.shake = Math.max(state.shake, 9);
   updateLoadoutUI();
   updateSynergyUI();
+  currentMutationWish = "";
   closeReward();
 }
 
@@ -3742,7 +4206,11 @@ function rerollUpgrades() {
   if (state.rerolls <= 0 || ui.upgrade.hidden) return;
   state.rerolls -= 1;
   if (state.rewardType === "mutation") {
-    generateMutations();
+    if (!currentMutationChoices.length) {
+      state.rerolls += 1;
+      return;
+    }
+    generateMutations(currentMutationWish);
     return;
   }
   currentUpgradeChoices = availableUpgrades(state.rewardType === "artifact");
@@ -4017,10 +4485,36 @@ ui.archetypePresets.addEventListener("click", (event) => {
   for (const item of ui.archetypePresets.querySelectorAll("button")) item.classList.toggle("active", item === button);
 });
 ui.upgradeOptions.addEventListener("click", (event) => {
+  const quickWish = event.target.closest("button[data-mutation-wish]");
+  if (quickWish) {
+    const input = ui.upgradeOptions.querySelector("[data-mutation-wish-input]");
+    const count = ui.upgradeOptions.querySelector("[data-mutation-wish-count]");
+    if (input) {
+      input.value = quickWish.dataset.mutationWish;
+      input.focus();
+      if (count) count.textContent = String(input.value.length);
+    }
+    return;
+  }
   const mutation = event.target.closest("button[data-mutation-index]");
   if (mutation) { selectMutation(Number(mutation.dataset.mutationIndex)); return; }
   const card = event.target.closest("button[data-upgrade-id]");
   if (card) selectUpgrade(card.dataset.upgradeId);
+});
+ui.upgradeOptions.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-mutation-wish-input]");
+  if (!input) return;
+  const count = ui.upgradeOptions.querySelector("[data-mutation-wish-count]");
+  if (count) count.textContent = String(input.value.length);
+});
+ui.upgradeOptions.addEventListener("submit", (event) => {
+  const form = event.target.closest("form[data-mutation-wish-form]");
+  if (!form) return;
+  event.preventDefault();
+  const input = form.querySelector("[data-mutation-wish-input]");
+  const wish = input?.value.trim() || "";
+  if (!wish) return;
+  generateMutations(wish);
 });
 ui.reroll.addEventListener("click", rerollUpgrades);
 ui.wishInput.addEventListener("input", () => { ui.charCount.textContent = String(ui.wishInput.value.length); });
