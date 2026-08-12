@@ -12,9 +12,21 @@ body.trailer-mode .intro-overlay {
   display: none;
 }
 
+body.trailer-mode .archetype-template-grid small,
+body.trailer-mode .upgrade-card .upgrade-family,
+body.trailer-mode .upgrade-card p,
+body.trailer-mode .mutation-evolved-name {
+  display: none;
+}
+
+body.trailer-mode .upgrade-footer {
+  visibility: hidden;
+}
+
 body.trailer-mode .archive-button,
 body.trailer-mode .sound-button,
 body.trailer-mode .api-pill,
+body.trailer-mode .budget-chip,
 body.trailer-mode .side-footer,
 body.trailer-mode .controls-line {
   visibility: hidden;
@@ -176,6 +188,11 @@ body.trailer-mode.trailer-zoom-void .game-panel canvas {
   text-transform: uppercase;
 }
 
+.rh-trailer-copy .kicker:empty,
+.rh-trailer-copy p:empty {
+  display: none;
+}
+
 .rh-trailer-copy.hero-copy {
   left: 50%;
   bottom: 64px;
@@ -324,11 +341,9 @@ body.trailer-mode .mutation-card.trailer-selected {
 }
 
 .rh-trailer-end.visible > div { transform: scale(1); opacity: 1; }
-.rh-trailer-end .end-kicker { display: block; margin-bottom: 20px; color: #78eaff; font: 800 10px/1 ui-monospace, Consolas, monospace; letter-spacing: .36em; }
 .rh-trailer-end h1 { margin: 0 0 12px; color: #fff; font: 900 clamp(64px, 9vw, 145px)/.86 Impact, "Arial Narrow", sans-serif; letter-spacing: -.045em; text-shadow: 0 0 24px rgba(255,54,95,.42); }
 .rh-trailer-end h1 i { color: #ff365f; font-style: normal; }
-.rh-trailer-end p { margin: 0; color: #d9dbe3; font: 650 16px system-ui, sans-serif; letter-spacing: .2em; }
-.rh-trailer-end small { display: inline-block; margin-top: 24px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.18); color: #9ea4b4; font: 700 9px/1 ui-monospace, Consolas, monospace; letter-spacing: .18em; }
+.rh-trailer-end small { display: inline-block; margin-top: 20px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.18); color: #b9bfcc; font: 700 9px/1 ui-monospace, Consolas, monospace; letter-spacing: .2em; }
 
 @keyframes rh-trailer-open { from { opacity: 0; transform: scale(1.025); filter: brightness(1.8); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
 @keyframes rh-trailer-flash { 0% { opacity: 0; } 14% { opacity: .93; } 38% { opacity: .2; } 100% { opacity: 0; } }
