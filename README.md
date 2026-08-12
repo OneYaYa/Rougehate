@@ -5,11 +5,13 @@
   <p>一款让玩家用自然语言创造角色与攻击方式的宇宙幸存者肉鸽。</p>
 </div>
 
-[![ROUGE HATE 14 秒新版实机宣传片](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-trailer-14s-final.mp4)
+[![ROUGE HATE 新版实机玩法宣传片](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-gameplay-trailer-final.mp4)
 
 <p align="center">
-  <a href="trailer-output/rouge-hate-trailer-14s-final.mp4"><strong>▶ 观看 / 下载 1080p 完整宣传片</strong></a>
+  <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ 观看 / 下载 1080p · 30 FPS 完整宣传片</strong></a>
 </p>
+
+宣传片以完整的一局成长线呈现核心玩法：自定义战斗身份、移动与虫洞冲刺、遗物/赐福选择、自然语言锻造、武器异梦，以及五武器终局对抗 Boss。全部战斗画面均由浏览器中的实时 Canvas 玩法录制，配乐与转场音效为本地程序化原创。
 
 ## 你的话，会成为真正的武器
 
@@ -110,12 +112,15 @@ python -m py_compile server.py
 <details>
 <summary><strong>重新录制宣传片</strong></summary>
 
-导演模式位于 `?trailer=1`，只用于确定性实机录制，不会影响正常游戏。最终成片使用本地生成的原创 BGM 与转场音效。
+导演模式位于 `?trailer=1`，只用于确定性实机录制，不会影响正常游戏。当前分镜约 38 秒，采用“爆点冷开场 → 身份定义 → 早期生存 → 构筑选择 → 自由锻造 → 武器异梦 → 终局 Boss”的递进结构；战斗段会驱动角色持续横穿、变向和冲刺。最终成片使用本地生成的原创 BGM 与转场音效。
 
 ```powershell
-python -m pip install --target .trailer_tools numpy imageio-ffmpeg playwright
-$env:PYTHONPATH=(Resolve-Path '.trailer_tools')
+python -m pip install numpy imageio-ffmpeg playwright
 python tools\render_trailer.py
 ```
+
+录制器默认调用 Windows 上已安装的 Google Chrome。
+
+输出文件为 `trailer-output/rouge-hate-gameplay-trailer-final.mp4`，规格为 H.264 High / AAC Stereo / 1920×1080 / 30 FPS；脚本会同步重建 README 顶部的轻量预览动图。
 
 </details>

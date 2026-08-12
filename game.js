@@ -3000,8 +3000,17 @@ function update(dt) {
   updateHUD();
 }
 
+function playerScreenPosition() {
+  const trailerOffset = window.ROUGE_HATE_TRAILER_CAMERA || { x: 0, y: 0 };
+  return {
+    x: width / 2 + (Number(trailerOffset.x) || 0),
+    y: height / 2 + (Number(trailerOffset.y) || 0),
+  };
+}
+
 function worldToScreen(x, y) {
-  return { x: x - player.x + width / 2, y: y - player.y + height / 2 };
+  const anchor = playerScreenPosition();
+  return { x: x - player.x + anchor.x, y: y - player.y + anchor.y };
 }
 
 function drawGrid() {
@@ -3837,13 +3846,14 @@ function polygonWithContext(renderCtx, x, y, radius, sides, rotation = 0) {
 function drawEquippedWeapons() {
   const held = weapons.filter((weapon) => weapon.delivery !== "orbit");
   const facing = Math.atan2(player.moveY, player.moveX);
+  const anchor = playerScreenPosition();
   held.slice(1).forEach((weapon, index) => {
     const side = index % 2 ? -1 : 1;
     const row = Math.floor(index / 2);
     const angle = facing + side * (1.45 + row * .2);
-    drawWeaponModel(ctx, weapon, width / 2 + Math.cos(angle) * 30, height / 2 + Math.sin(angle) * 30, angle, .64, .62);
+    drawWeaponModel(ctx, weapon, anchor.x + Math.cos(angle) * 30, anchor.y + Math.sin(angle) * 30, angle, .64, .62);
   });
-  if (held[0]) drawWeaponModel(ctx, held[0], width / 2 + player.moveX * 15, height / 2 + player.moveY * 15, facing, .92, 1);
+  if (held[0]) drawWeaponModel(ctx, held[0], anchor.x + player.moveX * 15, anchor.y + player.moveY * 15, facing, .92, 1);
 }
 
 function drawOrbitAttachment(point, weapon, angle) {
@@ -4528,8 +4538,9 @@ function drawParticles() {
 }
 
 function drawPlayer() {
-  const x = width / 2;
-  const y = height / 2;
+  const anchor = playerScreenPosition();
+  const x = anchor.x;
+  const y = anchor.y;
   const flicker = player.invulnerable > 0 && Math.floor(player.invulnerable * 18) % 2 === 0;
   const archetype = selectedArchetype || defaultArchetype();
   const primary = archetype.primary_color || "#ff365f";

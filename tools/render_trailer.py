@@ -1,4 +1,4 @@
-"""Render the deterministic 14-second ROUGE HATE gameplay trailer.
+"""Render the deterministic ROUGE HATE gameplay trailer.
 
 The browser footage is genuine Canvas gameplay driven by `?trailer=1`. Music is
 generated locally so the exported promo contains no third-party copyrighted
@@ -27,8 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "trailer-output"
 RAW = OUTPUT / "raw" / time.strftime("%Y%m%d-%H%M%S")
 PORT = 8798
-DURATION = 14.18
+DURATION = 38.02
 SAMPLE_RATE = 48_000
+CAPTURE_PREROLL = 1.0
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 
 
@@ -117,59 +118,96 @@ def add_riser(track: np.ndarray, start: float, duration: float, amplitude: float
 
 
 def build_soundtrack(path: Path) -> None:
-    frames = int((DURATION + .12) * SAMPLE_RATE)
+    frames = int((DURATION + .18) * SAMPLE_RATE)
     track = np.zeros((frames, 2), dtype=np.float64)
     rng = random.Random(7127)
-    bpm = 160
-    beat = 60 / bpm
+    bass_notes = [36.71, 43.65, 32.70, 49.00]
+    arp_notes = [146.83, 174.61, 220.00, 261.63, 220.00, 174.61]
 
-    # Low cosmic bed and sparse intro pulse.
-    add_tone(track, 0, 12.8, 36.71, .12, .42, harmonics=(1, .35, .16))
-    add_tone(track, 0, 7.25, 73.42, .055, .5, pan=-.2, harmonics=(1, .22))
-    for step in np.arange(0, 7.28, beat):
-        add_kick(track, float(step), .36 if step < 3.7 else .48)
-        if int(round(step / beat)) % 2:
-            add_noise(track, float(step), .14, .095, seed=rng.randrange(10_000))
+    # A continuous sub-bed glues the four narrative chapters together.
+    add_tone(track, 0, 35.0, 36.71, .09, .16, harmonics=(1, .35, .16))
+    add_tone(track, 3.18, 31.6, 73.42, .038, .15, pan=-.18, harmonics=(1, .22))
 
-    # Build-up to the typed weapon wish.
-    add_riser(track, 4.65, 2.63, .20, 41)
-    for at in [1.86, 3.78, 5.18]:
-        add_tone(track, at, .8, 49, .42, 4.8, harmonics=(1, .5, .22))
-        add_noise(track, at, .48, .18, 7.5, seed=int(at * 1000))
+    def rhythm(start: float, end: float, bpm: float, intensity: float,
+               bright: float = 0.0, double_kick: bool = False) -> None:
+        beat = 60 / bpm
+        step = beat / 2
+        index = 0
+        at = start
+        while at < end:
+            on_beat = index % 2 == 0
+            if on_beat or (double_kick and index % 4 == 3):
+                add_kick(track, at, intensity * (1.0 if on_beat else .58))
+            else:
+                add_noise(track, at, .075, intensity * .11, 30,
+                          pan=(-.46 if index % 4 == 1 else .46), seed=rng.randrange(100_000))
+            if on_beat and (index // 2) % 2 == 1:
+                add_noise(track, at, .22, intensity * .24, 14, seed=rng.randrange(100_000))
+            add_tone(track, at, step * .92, bass_notes[(index // 2) % len(bass_notes)],
+                     intensity * .25, 3.0, pan=(-.12 if index % 4 < 2 else .12),
+                     harmonics=(1, .45, .21))
+            if bright > 0:
+                add_tone(track, at, step * .7, arp_notes[index % len(arp_notes)],
+                         bright, 5.2, pan=math.sin(index * 1.7) * .62,
+                         harmonics=(1, .34, .12))
+            at += step
+            index += 1
 
-    # The drop: four-on-the-floor, syncopated bass, hats and a bright arpeggio.
-    notes = [36.71, 43.65, 32.70, 49.00]
-    arp = [146.83, 174.61, 220.00, 261.63, 220.00, 174.61]
-    drop_start = 7.28
-    step = beat / 2
-    index = 0
-    at = drop_start
-    while at < 12.72:
-        beat_index = int((at - drop_start) / beat + 1e-5)
-        if index % 2 == 0:
-            add_kick(track, at, .82)
-        else:
-            add_noise(track, at, .075, .10, 30, pan=(-.45 if index % 4 == 1 else .45), seed=9000 + index)
-        if beat_index % 4 in (1, 3) and index % 2 == 0:
-            add_noise(track, at, .22, .22, 14, seed=12000 + index)
-        add_tone(track, at, step * .92, notes[(index // 2) % len(notes)], .24, 3.0,
-                 pan=(-.12 if index % 4 < 2 else .12), harmonics=(1, .45, .21))
-        add_tone(track, at, step * .68, arp[index % len(arp)], .11, 5.2,
-                 pan=math.sin(index * 1.7) * .62, harmonics=(1, .34, .12))
-        at += step
-        index += 1
+    # 0–3.18: open at the payoff with an immediate, compact hook.
+    rhythm(0, 3.18, 156, .78, .085, True)
 
-    # Whooshes and impacts match the three build cuts and the end card.
-    for number, at in enumerate([7.28, 9.05, 10.82, 12.72]):
-        add_riser(track, max(0, at - .38), .38, .17, 200 + number)
-        add_tone(track, at, 1.0, 38 if at < 12 else 31, .72, 5.2, harmonics=(1, .5, .25))
-        add_noise(track, at, .55, .28, 8.5, seed=300 + number)
+    # 3.18–6.38: identity compiler — half-time pulse leaves room to read.
+    rhythm(3.18, 6.38, 104, .32, .018)
+    for index, at in enumerate(np.arange(3.42, 6.2, .58)):
+        add_noise(track, float(at), .055, .055, 38, pan=(-.5 if index % 2 else .5), seed=4100 + index)
 
-    # Logo hold: one resolved synthetic chord, then a clean tail.
-    for frequency, pan in [(73.42, -.35), (110.0, 0), (146.83, .35), (220.0, .12)]:
-        add_tone(track, 12.73, 1.45, frequency, .13, 1.45, pan=pan, harmonics=(1, .28, .08))
+    # 6.38–10.88: early-run movement finds a steady groove.
+    rhythm(6.38, 10.88, 140, .56, .055)
 
-    fade_start = int(13.75 * SAMPLE_RATE)
+    # 10.88–13.88: the upgrade decision lands, then briefly suspends time.
+    for frequency, pan in [(73.42, -.35), (110.0, 0), (146.83, .35)]:
+        add_tone(track, 10.88, 2.75, frequency, .09, 1.0, pan=pan, harmonics=(1, .28, .08))
+    for at in [11.35, 12.25, 13.15]:
+        add_noise(track, at, .08, .055, 34, seed=int(at * 1000))
+
+    # 13.88–16.78: demonstrate the selected build before the unique hook.
+    rhythm(13.88, 16.78, 146, .61, .068)
+
+    # 16.78–21.48: forge sequence — mechanical ticks accelerate into a reveal.
+    for index, at in enumerate(np.arange(16.9, 19.45, .29)):
+        add_noise(track, float(at), .05, .045 + index * .0035, 42,
+                  pan=(-.58 if index % 2 else .58), seed=5200 + index)
+        add_tone(track, float(at), .11, 220 + index * 15, .026 + index * .0015,
+                 8, pan=(-.35 if index % 2 else .35), harmonics=(1, .2))
+    add_riser(track, 18.35, 1.10, .18, 601)
+    for frequency, pan in [(98.0, -.3), (146.83, .1), (196.0, .35)]:
+        add_tone(track, 19.45, 1.8, frequency, .12, 1.7, pan=pan, harmonics=(1, .3, .1))
+
+    # 21.48–26.08: the first full drop pays off the forged weapon.
+    rhythm(21.48, 26.08, 158, .84, .105, True)
+
+    # 26.08–29.48: weapon dream returns to half-time without losing tension.
+    rhythm(26.08, 29.48, 108, .35, .028)
+    add_riser(track, 27.05, 2.43, .18, 702)
+
+    # 29.48–34.78: final sector, fastest and brightest statement of the build.
+    rhythm(29.48, 34.78, 168, .94, .13, True)
+    add_tone(track, 31.2, 3.35, 55.0, .08, .35, harmonics=(1, .5, .22))
+
+    # Each visual chapter lands on a distinct impact; the last one opens the CTA.
+    cut_points = [3.18, 6.38, 10.88, 13.88, 16.78, 19.45, 21.48, 26.08, 29.48, 34.78]
+    for number, at in enumerate(cut_points):
+        if at not in (19.45,):
+            add_riser(track, max(0, at - .34), .34, .115 if at < 21 else .16, 800 + number)
+        add_tone(track, at, .92, 39 if at < 29 else 31, .48 if at < 29 else .72,
+                 5.4, harmonics=(1, .5, .25))
+        add_noise(track, at, .48, .20 if at < 29 else .29, 8.5, seed=900 + number)
+
+    # Logo hold: resolved synthetic chord and a clean social-platform-safe tail.
+    for frequency, pan in [(73.42, -.38), (110.0, -.08), (146.83, .32), (220.0, .12)]:
+        add_tone(track, 34.79, 3.1, frequency, .12, 1.1, pan=pan, harmonics=(1, .28, .08))
+
+    fade_start = int(37.35 * SAMPLE_RATE)
     track[fade_start:] *= np.linspace(1, 0, len(track) - fade_start)[:, None]
     # Gentle saturation and normalization make the tiny synth feel trailer-sized.
     track = np.tanh(track * 1.32)
@@ -217,7 +255,7 @@ def record_gameplay() -> Path:
                 page = context.new_page()
                 video = page.video
                 page.goto(f"http://127.0.0.1:{PORT}/?trailer=1", wait_until="networkidle")
-                deadline = time.time() + 25
+                deadline = time.time() + DURATION + 15
                 while time.time() < deadline:
                     if page.locator("html").get_attribute("data-trailer-complete") == "1":
                         break
@@ -243,16 +281,16 @@ def record_gameplay() -> Path:
 def mux_video(raw_video: Path, soundtrack: Path, destination: Path) -> None:
     ffmpeg = get_ffmpeg_exe()
     command = [
-        ffmpeg, "-y", "-ss", "0.68", "-i", str(raw_video), "-i", str(soundtrack),
+        ffmpeg, "-y", "-ss", str(CAPTURE_PREROLL), "-i", str(raw_video), "-i", str(soundtrack),
         "-t", str(DURATION), "-map", "0:v:0", "-map", "1:a:0",
         # Playwright records a short navigation pre-roll before director mode
-        # starts. The input seek above removes it; pad the final logo hold and
-        # force constant 25 fps so H.264 level metadata remains standards-safe.
+        # starts. The calibrated input seek removes it; pad the final logo hold and
+        # force constant 30 fps so H.264 level metadata remains standards-safe.
         "-vf", (
             "tpad=stop_mode=clone:stop_duration=0.68,"
-            "scale=1920:1080:flags=lanczos,fps=25"
+            "scale=1920:1080:flags=lanczos,fps=30"
         ),
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "15",
         "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
         "-c:a", "aac", "-b:a", "192k", "-ar", str(SAMPLE_RATE),
         "-movflags", "+faststart", str(destination),
@@ -265,8 +303,8 @@ def build_preview(source: Path, destination: Path) -> None:
     ffmpeg = get_ffmpeg_exe()
     destination.parent.mkdir(parents=True, exist_ok=True)
     filter_graph = (
-        "fps=8,scale=640:-1:flags=lanczos,split[s0][s1];"
-        "[s0]palettegen=max_colors=128:stats_mode=diff[p];"
+        "fps=6,scale=560:-1:flags=lanczos,split[s0][s1];"
+        "[s0]palettegen=max_colors=96:stats_mode=diff[p];"
         "[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
     )
     subprocess.run([
@@ -279,7 +317,7 @@ def main() -> None:
     OUTPUT.mkdir(exist_ok=True)
     RAW.mkdir(parents=True, exist_ok=True)
     soundtrack = RAW / "original-soundtrack.wav"
-    destination = OUTPUT / "rouge-hate-trailer-14s-final.mp4"
+    destination = OUTPUT / "rouge-hate-gameplay-trailer-final.mp4"
     preview = ROOT / "assets" / "branding" / "rouge-hate-trailer-preview.gif"
     print("[1/4] Generating original soundtrack...")
     build_soundtrack(soundtrack)
