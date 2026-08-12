@@ -49,17 +49,17 @@ body.trailer-mode.trailer-zoom-boss .game-panel canvas {
 }
 
 body.trailer-mode.trailer-zoom-storm .game-panel canvas {
-  --trailer-zoom: 1.14;
-  --trailer-origin: 50% 50%;
+  --trailer-zoom: 1.22;
+  --trailer-origin: 48% 50%;
 }
 
 body.trailer-mode.trailer-zoom-sun .game-panel canvas {
-  --trailer-zoom: 1.23;
-  --trailer-origin: 50% 50%;
+  --trailer-zoom: 1.29;
+  --trailer-origin: 52% 50%;
 }
 
 body.trailer-mode.trailer-zoom-void .game-panel canvas {
-  --trailer-zoom: 1.34;
+  --trailer-zoom: 1.4;
   --trailer-origin: 52% 50%;
 }
 

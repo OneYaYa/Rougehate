@@ -5,7 +5,7 @@
   <p>一款让玩家用自然语言创造角色与攻击方式的宇宙幸存者肉鸽。</p>
 </div>
 
-[![ROUGE HATE 14 秒实机宣传片](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-trailer-14s-final.mp4)
+[![ROUGE HATE 14 秒新版实机宣传片](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-trailer-14s-final.mp4)
 
 <p align="center">
   <a href="trailer-output/rouge-hate-trailer-14s-final.mp4"><strong>▶ 观看 / 下载 1080p 完整宣传片</strong></a>

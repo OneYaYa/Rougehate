@@ -260,17 +260,35 @@ def mux_video(raw_video: Path, soundtrack: Path, destination: Path) -> None:
     subprocess.run(command, cwd=ROOT, check=True)
 
 
+def build_preview(source: Path, destination: Path) -> None:
+    """Build the lightweight looping README preview from the final master."""
+    ffmpeg = get_ffmpeg_exe()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    filter_graph = (
+        "fps=8,scale=640:-1:flags=lanczos,split[s0][s1];"
+        "[s0]palettegen=max_colors=128:stats_mode=diff[p];"
+        "[s1][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+    )
+    subprocess.run([
+        ffmpeg, "-y", "-i", str(source), "-vf", filter_graph,
+        "-loop", "0", str(destination),
+    ], cwd=ROOT, check=True)
+
+
 def main() -> None:
     OUTPUT.mkdir(exist_ok=True)
     RAW.mkdir(parents=True, exist_ok=True)
     soundtrack = RAW / "original-soundtrack.wav"
     destination = OUTPUT / "rouge-hate-trailer-14s-final.mp4"
-    print("[1/3] Generating original soundtrack...")
+    preview = ROOT / "assets" / "branding" / "rouge-hate-trailer-preview.gif"
+    print("[1/4] Generating original soundtrack...")
     build_soundtrack(soundtrack)
-    print("[2/3] Recording real-time browser gameplay...")
+    print("[2/4] Recording real-time browser gameplay...")
     raw_video = record_gameplay()
-    print("[3/3] Encoding H.264 promotional master...")
+    print("[3/4] Encoding H.264 promotional master...")
     mux_video(raw_video, soundtrack, destination)
+    print("[4/4] Building README preview GIF...")
+    build_preview(destination, preview)
     print(destination.resolve())
 
 

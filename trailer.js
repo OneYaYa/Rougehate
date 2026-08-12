@@ -172,20 +172,20 @@
 
     if (kind === "storm") {
       weapons = [
-        weapon({ name: "雷鳗三棱镜", delivery: "beam", visual_form: "staff", damage: 52, cooldown: .24, range: 920, projectile_size: 13, color: "#72eaff", mutations: [mutation("fork", "三棱镜", "#72eaff"), mutation("chain", "雷鳗脊骨", "#9ffcff"), mutation("echo", "昨天的枪声", "#c9a5ff")] }),
-        weapon({ name: "猎犬雷卵", delivery: "projectile", visual_form: "cannon", damage: 34, cooldown: .28, projectile_count: 7, projectile_speed: 570, projectile_size: 7, spread_degrees: 116, range: 700, color: "#b7ffef", mutations: [mutation("split", "虫卵弹", "#b7ffef"), mutation("ricochet", "猎犬子弹", "#7cf29a")] }),
-        weapon({ name: "发怒的卫星群", delivery: "orbit", visual_form: "drone", damage: 31, cooldown: .22, projectile_count: 7, projectile_size: 13, range: 112, color: "#8aa7ff", mutations: [mutation("orbit_salvo", "发怒的卫星", "#8aa7ff"), mutation("chain", "雷鳗脊骨", "#72eaff")] }),
-        weapon({ name: "第二次雷心", delivery: "aura", visual_form: "orb", damage: 46, cooldown: .46, range: 245, projectile_size: 12, color: "#bd7dff", mutations: [mutation("aftershock", "第二次心跳", "#bd7dff"), mutation("nova", "死星花", "#ff8aef")] }),
+        weapon({ name: "双螺旋雷鳗", delivery: "beam", visual_form: "staff", visual_variant: 6, secondary_color: "#e9ffff", visual_motif: "缠绕的雷鳗脊骨", damage: 52, cooldown: .24, range: 920, projectile_size: 13, color: "#72eaff", mutations: [mutation("fork", "三棱镜", "#72eaff"), mutation("chain", "雷鳗脊骨", "#9ffcff"), mutation("echo", "昨天的枪声", "#c9a5ff")] }),
+        weapon({ name: "三叉雷卵炮", delivery: "projectile", visual_form: "cannon", visual_variant: 22, secondary_color: "#7c8cff", visual_motif: "三叉状电浆弹头", damage: 34, cooldown: .28, projectile_count: 7, projectile_speed: 570, projectile_size: 8, spread_degrees: 116, range: 700, color: "#b7ffef", mutations: [mutation("split", "虫卵弹", "#b7ffef"), mutation("ricochet", "猎犬子弹", "#7cf29a")] }),
+        weapon({ name: "伴星雷暴阵列", delivery: "orbit", visual_form: "drone", visual_variant: 11, secondary_color: "#f3f7ff", visual_motif: "环形伴星天线", damage: 31, cooldown: .22, projectile_count: 7, projectile_size: 13, range: 112, color: "#8aa7ff", mutations: [mutation("orbit_salvo", "发怒的卫星", "#8aa7ff"), mutation("chain", "雷鳗脊骨", "#72eaff")] }),
+        weapon({ name: "裂星雷心", delivery: "aura", visual_form: "orb", visual_variant: 17, secondary_color: "#ff9fe7", visual_motif: "八芒星雷电核心", damage: 46, cooldown: .46, range: 245, projectile_size: 12, color: "#bd7dff", mutations: [mutation("aftershock", "第二次心跳", "#bd7dff"), mutation("nova", "死星花", "#ff8aef")] }),
       ];
     } else if (kind === "sun") {
       bonuses.explosion = 72;
       bonuses.burn = 12;
       bonuses.burnSpread = 1.4;
       weapons = [
-        weapon({ name: "怀孕的太阳", delivery: "projectile", visual_form: "cannon", damage: 76, cooldown: .34, projectile_count: 9, projectile_speed: 430, projectile_size: 11, spread_degrees: 210, range: 650, explosion_radius: 92, burn_damage: 16, color: "#ffb347", mutations: [mutation("split", "虫卵弹", "#ffd166"), mutation("nova", "死星花", "#ff6f45")] }),
-        weapon({ name: "众生火葬", delivery: "aura", visual_form: "orb", damage: 62, cooldown: .38, range: 270, projectile_size: 16, explosion_radius: 70, burn_damage: 20, color: "#ff4f63", mutations: [mutation("aftershock", "第二次心跳", "#ff4f63"), mutation("nova", "死星花", "#ffb347")] }),
-        weapon({ name: "飞出去的赤月", delivery: "melee", visual_form: "blade", damage: 94, cooldown: .3, projectile_count: 3, projectile_size: 18, range: 210, spread_degrees: 150, explosion_radius: 46, color: "#ffe0a3", mutations: [mutation("crescent", "飞出去的月牙", "#ffe0a3"), mutation("echo", "昨天的刀光", "#ff8066")] }),
-        weapon({ name: "日冕鸦群", delivery: "orbit", visual_form: "drone", damage: 40, cooldown: .2, projectile_count: 8, projectile_size: 14, range: 145, explosion_radius: 38, burn_damage: 12, color: "#ff8a38", mutations: [mutation("orbit_salvo", "发怒的卫星", "#ff8a38"), mutation("nova", "死星花", "#ffe36a")] }),
+        weapon({ name: "怀孕的彗核", delivery: "projectile", visual_form: "cannon", visual_variant: 3, secondary_color: "#fff5b8", visual_motif: "拖曳日珥的彗星核心", damage: 76, cooldown: .34, projectile_count: 9, projectile_speed: 430, projectile_size: 12, spread_degrees: 210, range: 650, explosion_radius: 92, burn_damage: 16, color: "#ffb347", mutations: [mutation("split", "虫卵弹", "#ffd166"), mutation("nova", "死星花", "#ff6f45")] }),
+        weapon({ name: "众生圣环火葬", delivery: "aura", visual_form: "orb", visual_variant: 15, secondary_color: "#ffd166", visual_motif: "重叠的日冕圣环", damage: 62, cooldown: .38, range: 270, projectile_size: 16, explosion_radius: 70, burn_damage: 20, color: "#ff4f63", mutations: [mutation("aftershock", "第二次心跳", "#ff4f63"), mutation("nova", "死星花", "#ffb347")] }),
+        weapon({ name: "飞出去的赤月", delivery: "melee", visual_form: "blade", visual_variant: 2, secondary_color: "#ff5e44", visual_motif: "燃烧的双层月牙", damage: 94, cooldown: .3, projectile_count: 3, projectile_size: 18, range: 210, spread_degrees: 150, explosion_radius: 46, color: "#ffe0a3", mutations: [mutation("crescent", "飞出去的月牙", "#ffe0a3"), mutation("echo", "昨天的刀光", "#ff8066")] }),
+        weapon({ name: "日冕星蛾群", delivery: "orbit", visual_form: "drone", visual_variant: 9, secondary_color: "#fff4c2", visual_motif: "张合发光翅翼的星蛾", damage: 40, cooldown: .2, projectile_count: 8, projectile_size: 14, range: 145, explosion_radius: 38, burn_damage: 12, color: "#ff8a38", mutations: [mutation("orbit_salvo", "发怒的卫星", "#ff8a38"), mutation("nova", "死星花", "#ffe36a")] }),
       ];
     } else {
       bonuses.area = 1.55;
@@ -193,10 +193,10 @@
       bonuses.singularityPull = 42;
       bonuses.singularityDeath = .72;
       weapons = [
-        weapon({ name: "没有外面的世界", delivery: "aura", visual_form: "orb", damage: 70, cooldown: .34, range: 330, projectile_size: 20, explosion_radius: 88, slow_percent: .32, color: "#a66bff", mutations: [mutation("aftershock", "第二次心跳", "#a66bff"), mutation("nova", "死星花", "#ff5fc8"), mutation("chain", "雷鳗脊骨", "#6ee7ff")] }),
-        weapon({ name: "遮天鸦群", delivery: "projectile", visual_form: "rifle", damage: 56, cooldown: .22, projectile_count: 8, projectile_speed: 680, projectile_size: 8, spread_degrees: 145, range: 880, homing: .72, explosion_radius: 48, color: "#f3e9ff", mutations: [mutation("return", "归巢骨钩", "#f3e9ff"), mutation("ricochet", "猎犬子弹", "#b29cff"), mutation("split", "虫卵弹", "#8ae9ff")] }),
-        weapon({ name: "盲星棱镜", delivery: "beam", visual_form: "staff", damage: 64, cooldown: .26, range: 980, projectile_size: 16, color: "#cf73ff", mutations: [mutation("fork", "三棱镜", "#cf73ff"), mutation("echo", "昨天的枪声", "#7edcff"), mutation("chain", "雷鳗脊骨", "#7edcff")] }),
-        weapon({ name: "九颗坏卫星", delivery: "orbit", visual_form: "drone", damage: 42, cooldown: .18, projectile_count: 9, projectile_size: 15, range: 168, color: "#73efff", mutations: [mutation("orbit_salvo", "发怒的卫星", "#73efff"), mutation("nova", "死星花", "#b66cff")] }),
+        weapon({ name: "没有外面的世界", delivery: "aura", visual_form: "orb", visual_variant: 21, secondary_color: "#0a0614", visual_motif: "吞光的奇点眼", damage: 70, cooldown: .34, range: 330, projectile_size: 20, explosion_radius: 88, slow_percent: .32, color: "#a66bff", mutations: [mutation("aftershock", "第二次心跳", "#a66bff"), mutation("nova", "死星花", "#ff5fc8"), mutation("chain", "雷鳗脊骨", "#6ee7ff")] }),
+        weapon({ name: "遮天幼星群", delivery: "projectile", visual_form: "bow", visual_variant: 23, secondary_color: "#78eaff", visual_motif: "孵化后各自追猎的幼星", damage: 56, cooldown: .22, projectile_count: 8, projectile_speed: 680, projectile_size: 9, spread_degrees: 145, range: 880, homing: .72, explosion_radius: 48, color: "#f3e9ff", mutations: [mutation("return", "归巢骨钩", "#f3e9ff"), mutation("ricochet", "猎犬子弹", "#b29cff"), mutation("split", "虫卵弹", "#8ae9ff")] }),
+        weapon({ name: "盲星棱镜", delivery: "beam", visual_form: "staff", visual_variant: 19, secondary_color: "#7edcff", visual_motif: "分光的深空晶棱", damage: 64, cooldown: .26, range: 980, projectile_size: 16, color: "#cf73ff", mutations: [mutation("fork", "三棱镜", "#cf73ff"), mutation("echo", "昨天的枪声", "#7edcff"), mutation("chain", "雷鳗脊骨", "#7edcff")] }),
+        weapon({ name: "九颗虚空之眼", delivery: "orbit", visual_form: "drone", visual_variant: 21, secondary_color: "#160d2b", visual_motif: "沿轨道凝视的奇点眼", damage: 42, cooldown: .18, projectile_count: 9, projectile_size: 15, range: 168, color: "#73efff", mutations: [mutation("orbit_salvo", "发怒的卫星", "#73efff"), mutation("nova", "死星花", "#b66cff")] }),
       ];
     }
 
@@ -225,6 +225,8 @@
     zoom();
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
+    state.running = false;
+    state.paused = true;
     openArchetypeSelection();
     ui.archetypeInput.value = "";
     ui.archetypeCount.textContent = "0";
@@ -245,6 +247,9 @@
     ui.archetypeModal.hidden = true;
     selectedArchetype = defaultArchetype("操纵星核、雷电与引力的星图法师");
     resetGame();
+    weapons[0].visual_variant = 13;
+    weapons[0].secondary_color = "#d8f7ff";
+    weapons[0].visual_motif = "旋转星图与古代符文";
     player.invulnerable = 30;
     state.time = 17;
     keys.add("KeyD");
@@ -274,7 +279,7 @@
   later(5.18, () => {
     hit("#ff365f");
     zoom("forge");
-    openForge(3);
+    openForge(4);
     copy.classList.remove("visible");
   });
   later(5.58, () => typeInto(ui.wishInput, "制造一颗吞噬全屏敌人，再分裂成雷暴的微型恒星", 1.28));
