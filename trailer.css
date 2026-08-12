@@ -296,6 +296,10 @@ body.trailer-mode.trailer-zoom-forge .forge-modal {
   box-shadow: 0 48px 180px #000, 0 0 85px rgba(255,54,95,.2);
 }
 
+body.trailer-mode .reforge-button { display: none; }
+body.trailer-mode .result-actions { grid-template-columns: 1fr; }
+body.trailer-mode .weapon-preview { min-height: 0; height: 160px; aspect-ratio: auto; }
+
 body.trailer-mode.trailer-forge-input-closeup #forgeModal {
   background: radial-gradient(circle at 50% 50%, rgba(255,54,95,.09), transparent 48%), #020207;
 }

@@ -56,11 +56,14 @@ const ui = {
   resultName: $("#resultName"),
   resultDescription: $("#resultDescription"),
   resultWeaponCanvas: $("#resultWeaponCanvas"),
+  resultPreviewTime: $("#resultPreviewTime"),
+  resultPreviewProgress: $("#resultPreviewProgress"),
   resultStats: $("#resultStats"),
   resultTags: $("#resultTags"),
   resultTradeoff: $("#resultTradeoff"),
   balanceNote: $("#balanceNote"),
   accept: $("#acceptButton"),
+  reforge: $("#reforgeButton"),
   forgeError: $("#forgeError"),
   forgeErrorText: $("#forgeErrorText"),
   retry: $("#retryButton"),
@@ -122,9 +125,9 @@ const visualMeta = {
   drone: { label: "无人机", glyph: "◇" },
 };
 
-const STAGE_DURATION = 240;
+const STAGE_DURATION = 180;
 const RUN_DURATION = STAGE_DURATION * 3;
-const BOSS_TIMES = [220, 460, 700];
+const BOSS_TIMES = [160, 340, 520];
 const stages = [
   { label: "星域 I · 坠入边境", color: "#58e6ff" },
   { label: "星域 II · 星兽迁徙", color: "#a78bfa" },
@@ -140,8 +143,16 @@ const openingWaveSizes = [8];
 const stageHealthScales = [1.08, 1.62, 2.75];
 const stageSpawnPressure = [1.28, 1.08, 1];
 const stageEncounters = [
-  { offset: 75, type: "migration", kicker: "MIGRATION SURGE", title: "高速星兽迁徙潮" },
-  { offset: 150, type: "elite", kicker: "ELITE HUNT", title: "雷鸣核心狩猎" },
+  { offset: 50 },
+  { offset: 110 },
+];
+const randomEncounterDefinitions = [
+  { id: "migration", kicker: "MIGRATION SURGE", title: "高速星兽迁徙潮" },
+  { id: "elite", kicker: "ELITE HUNT", title: "高危星兽狩猎" },
+  { id: "meteor", kicker: "ORBITAL FRACTURE", title: "陨星雨切入战区" },
+  { id: "courier", kicker: "MOVING TARGET", title: "截获移动星核信使" },
+  { id: "rift", kicker: "GRAVITY FRONT", title: "移动引力裂隙横扫" },
+  { id: "memory", kicker: "MEMORY TIDE", title: "认知潮汐正在回流" },
 ];
 const roleSkills = {
   warrior: { name: "恒星震荡", cooldown: 6.8, description: "震开近身星兽并获得短暂无敌" },
@@ -212,6 +223,7 @@ class SynthAudio {
     this.lastHit = 0;
     this.lastShot = 0;
     this.lastPickup = 0;
+    this.lastZone = 0;
   }
 
   wake() {
@@ -237,20 +249,42 @@ class SynthAudio {
     oscillator.stop(now + duration);
   }
 
-  shoot(delivery) {
+  profileFor(weapon = {}) {
+    const text = `${weapon.name || ""} ${weapon.visual_motif || ""} ${(weapon.tags || []).join(" ")}`.toLowerCase();
+    if (/雷|电|闪|lightning|storm/.test(text)) return { ratio: 1.48, type: "triangle", layer: 920, slide: 360 };
+    if (/火|炎|熔|燃|ember|burn/.test(text)) return { ratio: .78, type: "sawtooth", layer: 82, slide: -55 };
+    if (/毒|孢|菌|poison|toxin|spore/.test(text)) return { ratio: .64, type: "sine", layer: 146, slide: -18 };
+    if (/冰|霜|冻|frost|cryo/.test(text)) return { ratio: 1.22, type: "triangle", layer: 1240, slide: 90 };
+    if (/引力|黑洞|奇点|坍缩|gravity|void/.test(text)) return { ratio: .48, type: "sine", layer: 54, slide: -12 };
+    if (/剑|刀|刃|匕|blade/.test(text)) return { ratio: 1.72, type: "triangle", layer: 1320, slide: -240 };
+    return { ratio: 1, type: null, layer: 0, slide: 0 };
+  }
+
+  shoot(delivery, weapon = {}) {
     const now = performance.now();
     if (now - this.lastShot < 85) return;
     this.lastShot = now;
     const tones = { projectile: [180, "square"], beam: [520, "sawtooth"], aura: [110, "sine"], melee: [260, "sawtooth"] };
-    const [frequency, type] = tones[delivery] || tones.projectile;
-    this.tone(frequency, 0.055, type, 0.012, delivery === "beam" ? 240 : -35);
+    const [frequency, baseType] = tones[delivery] || tones.projectile;
+    const profile = this.profileFor(weapon);
+    this.tone(frequency * profile.ratio, 0.065, profile.type || baseType, 0.012, (delivery === "beam" ? 240 : -35) + profile.slide);
+    if (profile.layer) this.tone(profile.layer, 0.045, profile.type || "sine", 0.006, profile.slide * .35);
   }
 
-  hit(critical = false) {
+  hit(critical = false, weapon = {}) {
     const now = performance.now();
     if (now - this.lastHit < 45) return;
     this.lastHit = now;
-    this.tone(critical ? 760 : 95, critical ? 0.1 : 0.045, critical ? "triangle" : "square", critical ? 0.028 : 0.009, critical ? 130 : -25);
+    const profile = this.profileFor(weapon);
+    this.tone((critical ? 760 : 95) * Math.max(.65, profile.ratio), critical ? 0.1 : 0.045, critical ? "triangle" : profile.type || "square", critical ? 0.028 : 0.009, critical ? 130 : profile.slide * .3 - 25);
+  }
+
+  zone(weapon = {}, zoneType = "arcane") {
+    const now = performance.now();
+    if (now - this.lastZone < 360) return;
+    this.lastZone = now;
+    const profile = this.profileFor({ ...weapon, tags: [...(weapon.tags || []), zoneType] });
+    this.tone(72 * profile.ratio, .24, profile.type || "sine", .008, profile.slide * .25 + 35);
   }
 
   pickup() {
@@ -270,7 +304,7 @@ const audio = new SynthAudio(profile.sound);
 
 function createBonuses() {
   return {
-    damage: 1, cooldown: 1, range: 1, moveSpeed: 1, armor: 0, magnet: 155,
+    damage: 1, cooldown: 1, range: 1, moveSpeed: 1, armor: 0, magnet: 190,
     crit: 0, regen: 0, projectiles: 0, pierce: 0, area: 1, explosion: 0,
     burn: 0, poison: 0, slow: 0, venomAmp: 0, shatter: 0, chainChance: 0,
     chainDamage: 0, chainTargets: 0, execute: 0, singularityPull: 0,
@@ -294,6 +328,8 @@ let lastFrame = performance.now();
 let entityId = 1;
 let previewWeapon = null;
 let loadingTimer = null;
+let weaponPreviewFrame = 0;
+let weaponPreviewStartedAt = 0;
 
 const sessionId = (() => {
   const stored = localStorage.getItem("rougehate-session");
@@ -335,6 +371,7 @@ const state = {
   openingWaveTier: 0,
   openingWaveRemaining: 0,
   encounterTriggered: Array(6).fill(false),
+  encounterTypes: Array(6).fill(null),
   upgradePicks: 0,
   mutationRound: 0,
   mutationCount: 0,
@@ -364,6 +401,7 @@ let pickups = [];
 let particles = [];
 let effects = [];
 let mutationZones = [];
+let arenaHazards = [];
 let weapons = [];
 let enemyProjectiles = [];
 let pendingAttacks = [];
@@ -979,6 +1017,7 @@ function resetGame() {
   state.openingWaveTier = 0;
   state.openingWaveRemaining = 0;
   state.encounterTriggered = Array(6).fill(false);
+  state.encounterTypes = Array(6).fill(null);
   state.upgradePicks = 0;
   state.mutationRound = 0;
   state.mutationCount = 0;
@@ -1012,6 +1051,7 @@ function resetGame() {
   particles = [];
   effects = [];
   mutationZones = [];
+  arenaHazards = [];
   enemyProjectiles = [];
   pendingAttacks = [];
   weapons = [hydrateWeapon(selectedArchetype.starting_weapon || starterWeapon(), true)];
@@ -1124,7 +1164,12 @@ function createWeaponCard(weapon) {
   const stats = document.createElement("div");
   stats.className = "weapon-mini-stats";
   const dps = (runtimeDamage(weapon) / runtimeCooldown(weapon)).toFixed(1);
-  stats.append(makeMiniStat("伤害", runtimeDamage(weapon).toFixed(0)), makeMiniStat("频率", `${dps}/s`));
+  const attacksPerSecond = (1 / runtimeCooldown(weapon)).toFixed(2);
+  stats.append(
+    makeMiniStat("伤害", runtimeDamage(weapon).toFixed(0)),
+    makeMiniStat("DPS", dps),
+    makeMiniStat("攻速", `${attacksPerSecond}/s`),
+  );
   if (weapon.mutations?.length) stats.append(makeMiniStat("异变", weapon.mutations.length));
   else if (weapon.starter) stats.append(makeMiniStat("来源", "角色自带"));
   else if (weapon.forged) stats.append(makeMiniStat("重构", `阶段 ${forgeTiers[(weapon.forgeTier || weapon.level || 1) - 1]?.roman || "I"}`));
@@ -1456,13 +1501,17 @@ function startOpeningWave(stageIndex) {
 }
 
 function triggerStageEncounter(stageIndex, encounterIndex) {
-  const encounter = stageEncounters[encounterIndex];
+  const timing = stageEncounters[encounterIndex];
   const triggerIndex = stageIndex * stageEncounters.length + encounterIndex;
-  if (!encounter || state.encounterTriggered[triggerIndex]) return;
+  if (!timing || state.encounterTriggered[triggerIndex]) return;
   state.encounterTriggered[triggerIndex] = true;
   state.wave += 1;
+  const previousType = encounterIndex > 0 ? state.encounterTypes[triggerIndex - 1] : null;
+  const pool = randomEncounterDefinitions.filter((item) => item.id !== previousType);
+  const encounter = pool[Math.floor(Math.random() * pool.length)] || randomEncounterDefinitions[0];
+  state.encounterTypes[triggerIndex] = encounter.id;
   announce(encounter.kicker, encounter.title);
-  if (encounter.type === "migration") {
+  if (encounter.id === "migration") {
     const migrationPools = [
       ["pulse_wasp", "asteroid_mite", "azure_beetle"],
       ["nebula_hound", "comet_larva", "prism_fox", "phase_manta"],
@@ -1474,7 +1523,7 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
       spawnEnemy(false, 0, swiftTypes[index % swiftTypes.length]);
     }
     addLog(`${encounter.title}：${count} 个高速目标同时进入战区。`, true);
-  } else {
+  } else if (encounter.id === "elite") {
     const eliteProfiles = [
       { type: "shield_jelly", count: 1, title: "蓝幕护盾结阵" },
       { type: "spore_mother", count: 2, title: "紫孢育母入侵" },
@@ -1484,9 +1533,114 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
     for (let index = 0; index < profile.count; index += 1) spawnEnemy(false, 0, profile.type);
     ui.announcementTitle.textContent = profile.title;
     addLog(`${profile.title}：击破 ${profile.count} 个高危目标可获取高密度经验。`, true);
+  } else if (encounter.id === "meteor") {
+    const count = 7 + stageIndex * 2;
+    for (let index = 0; index < count; index += 1) {
+      const angle = index / count * Math.PI * 2 + Math.random() * .35;
+      const distance = 95 + Math.random() * 320;
+      arenaHazards.push({
+        type: "meteor",
+        x: player.x + Math.cos(angle) * distance,
+        y: player.y + Math.sin(angle) * distance,
+        radius: 48 + stageIndex * 7,
+        damage: 13 + stageIndex * 5,
+        triggerAt: state.time + 1.3 + index * .62,
+        expires: state.time + 2 + index * .62,
+        impacted: false,
+        color: "#ff6b4a",
+      });
+    }
+    addLog(`轨道断裂：${count} 颗陨星将依次砸入带标记区域。`, true);
+  } else if (encounter.id === "courier") {
+    const courierTypes = ["survey_drone", "phase_manta", "null_reaper"];
+    const courier = spawnEnemy(false, 0, courierTypes[stageIndex]);
+    courier.eventTarget = true;
+    courier.eventReward = stageIndex === 2 ? "artifact" : "upgrade";
+    courier.elite = true;
+    courier.rank = "elite";
+    courier.speciesName = "移动星核信使";
+    courier.maxHp *= 3.4;
+    courier.hp = courier.maxHp;
+    courier.speed *= 1.5;
+    courier.xp *= 5;
+    courier.color = "#ffd166";
+    courier.accent = "#fff2a8";
+    addLog("移动目标已标记：追上并击破星核信使，可获得强化宝箱。", true);
+  } else if (encounter.id === "rift") {
+    const angle = Math.random() * Math.PI * 2;
+    arenaHazards.push({
+      type: "rift",
+      x: player.x - Math.cos(angle) * 430,
+      y: player.y - Math.sin(angle) * 430,
+      vx: Math.cos(angle) * (92 + stageIndex * 14),
+      vy: Math.sin(angle) * (92 + stageIndex * 14),
+      radius: 82 + stageIndex * 10,
+      damage: 8 + stageIndex * 4,
+      tickAt: state.time + 1.2,
+      expires: state.time + 10,
+      color: "#b388ff",
+    });
+    addLog("移动引力裂隙正在横穿战区；其核心会持续牵引并周期造成伤害。", true);
+  } else if (encounter.id === "memory") {
+    const count = 10 + stageIndex * 4;
+    for (let index = 0; index < count; index += 1) {
+      const angle = index / count * Math.PI * 2;
+      xpGems.push({
+        x: player.x + Math.cos(angle) * (130 + index % 3 * 28),
+        y: player.y + Math.sin(angle) * (130 + index % 3 * 28),
+        value: 2 + stageIndex,
+        radius: 5,
+        phase: angle,
+        bornAt: state.time,
+        vacuum: true,
+      });
+    }
+    vacuumExperience("认知潮汐令散落经验全部回流");
   }
   state.shake = Math.max(state.shake, 8);
   audio.boss();
+}
+
+function damagePlayerFromHazard(amount, color, label) {
+  if (player.invulnerable > 0 || !state.running) return;
+  const taken = Math.max(1, Math.round(amount * difficultyModes[state.difficulty].damage * (1 - damageReduction())));
+  player.hp -= taken;
+  player.invulnerable = .68;
+  state.shake = Math.max(state.shake, 9);
+  effects.push({ type: "screen", color, life: .17, maxLife: .17 });
+  audio.hurt();
+  addLog(`${label}，受到 ${taken} 点伤害。`, player.hp <= 28);
+  if (player.hp <= 0) finishRun(false);
+}
+
+function updateArenaHazards(dt) {
+  for (const hazard of arenaHazards) {
+    if (hazard.type === "meteor") {
+      if (!hazard.impacted && state.time >= hazard.triggerAt) {
+        hazard.impacted = true;
+        const distance = Math.hypot(player.x - hazard.x, player.y - hazard.y);
+        if (distance <= hazard.radius + player.radius) damagePlayerFromHazard(hazard.damage, hazard.color, "陨星冲击命中");
+        effects.push({ type: "ring", x: hazard.x, y: hazard.y, radius: hazard.radius, color: hazard.color, life: .48, maxLife: .48, source: "enemy", style: "impact" });
+        burst(hazard.x, hazard.y, hazard.color, 18, 175);
+      }
+    } else if (hazard.type === "rift") {
+      hazard.x += hazard.vx * dt;
+      hazard.y += hazard.vy * dt;
+      const dx = hazard.x - player.x;
+      const dy = hazard.y - player.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      if (distance <= hazard.radius * 1.65) {
+        const pull = Math.max(0, 1 - distance / (hazard.radius * 1.65));
+        player.x += dx / distance * pull * 42 * dt;
+        player.y += dy / distance * pull * 42 * dt;
+      }
+      if (distance <= hazard.radius + player.radius && state.time >= hazard.tickAt) {
+        hazard.tickAt = state.time + 1.05;
+        damagePlayerFromHazard(hazard.damage, hazard.color, "引力裂隙灼伤");
+      }
+    }
+  }
+  arenaHazards = arenaHazards.filter((hazard) => state.time < hazard.expires);
 }
 
 function announce(kicker, title) {
@@ -1618,21 +1772,29 @@ function weaponVfxIntensity(weapon) {
   return Math.max(.72, Math.min(1.42, .72 + score / 260));
 }
 
+function friendlyVfxAlpha() {
+  const load = effects.length + particles.length * .32 + projectiles.length * .28 + enemies.length * .18;
+  if (load >= 360) return .34;
+  if (load >= 270) return .48;
+  if (load >= 190) return .66;
+  return 1;
+}
+
 function emitWeaponCast(weapon, x, y, angle = 0, scale = 1) {
   const recipe = weaponVfxRecipe(weapon);
-  if (!recipe || effects.length > 320) return;
+  if (!recipe || effects.length > 260) return;
   const intensity = weaponVfxIntensity(weapon);
   const life = (.18 + (recipe.timing === "linger" ? .09 : recipe.timing === "pulse" ? .05 : 0)) * Math.min(1.2, intensity);
   effects.push({
     type: "cast", x, y, angle, radius: (16 + (weapon.projectile_size || 5) * 1.8) * scale * intensity,
     color: weapon.color, secondaryColor: weapon.secondary_color || "#f1f0eb",
-    style: recipe.cast, form: recipe.form, recipe, life, maxLife: life,
+    style: recipe.cast, form: recipe.form, recipe, life, maxLife: life, source: "weapon",
   });
 }
 
 function emitWeaponImpact(enemy, weapon, directionX = 1, directionY = 0) {
   const recipe = weaponVfxRecipe(weapon);
-  if (!recipe || effects.length > 320) return;
+  if (!recipe || effects.length > 260) return;
   const intensity = weaponVfxIntensity(weapon);
   const angle = Math.atan2(directionY, directionX);
   const life = (.18 + (recipe.timing === "linger" ? .1 : .03)) * Math.min(1.15, intensity);
@@ -1640,7 +1802,7 @@ function emitWeaponImpact(enemy, weapon, directionX = 1, directionY = 0) {
     type: "impact", x: enemy.x, y: enemy.y, angle,
     radius: Math.max(13, (enemy.radius * .65 + (weapon.projectile_size || 5) * 1.3) * intensity),
     color: weapon.color, secondaryColor: weapon.secondary_color || "#ffffff",
-    style: recipe.impact, recipe, life, maxLife: life,
+    style: recipe.impact, recipe, life, maxLife: life, source: "weapon",
   });
 }
 
@@ -1683,7 +1845,7 @@ function fireProjectile(weapon, damageScale = 1) {
   }
   burst(player.x, player.y, weapon.color, 4, 45);
   weapon.recoil = 1;
-  audio.shoot("projectile");
+  audio.shoot("projectile", weapon);
   return true;
 }
 
@@ -1723,7 +1885,7 @@ function fireBeam(weapon, damageScale = 1) {
     });
   }
   emitWeaponCast(weapon, player.x + Math.cos(baseAngle) * 24, player.y + Math.sin(baseAngle) * 24, baseAngle, 1.12);
-  audio.shoot("beam");
+  audio.shoot("beam", weapon);
   weapon.recoil = 1;
   return true;
 }
@@ -1743,7 +1905,7 @@ function fireAura(weapon, damageScale = 1) {
     weapon, recipe: weaponVfxRecipe(weapon), secondaryColor: weapon.secondary_color,
   });
   emitWeaponCast(weapon, player.x, player.y, state.time, Math.min(1.8, runtimeRange(weapon) / 105));
-  audio.shoot("aura");
+  audio.shoot("aura", weapon);
   weapon.recoil = .45;
   return hit || enemies.length > 0;
 }
@@ -1809,7 +1971,7 @@ function fireMelee(weapon, damageScale = 1) {
     });
     effects.push({ type: "slash", x: player.x, y: player.y, angle, radius: range * 1.65, arc: .32, color: weapon.color, life: .3, maxLife: .3, source: "weapon", form: inferVisualForm(weapon), style: "crescent" });
   }
-  audio.shoot("melee");
+  audio.shoot("melee", weapon);
   return true;
 }
 
@@ -2181,7 +2343,7 @@ function executeEffectRules(trigger, weapon, context = {}) {
 }
 
 function addMutationZone(type, x, y, weapon, rule = null) {
-  if (mutationZones.length >= 36) mutationZones.shift();
+  if (mutationZones.length >= 24) mutationZones.shift();
   mutationZones.push({
     type, x, y, weapon, rule,
     radius: (rule?.radius || (type === "poison" ? 76 : 68)) * bonuses.area,
@@ -2396,7 +2558,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
   floatText(enemy.x, enemy.y - enemy.radius, Math.round(damage), thermal || shattering ? "#d8fbff" : critical ? "#ffd166" : weapon.color, critical || thermal || shattering);
   burst(enemy.x, enemy.y, weapon.color, critical ? 7 : 3, critical ? 90 : 45);
   if (critical || enemy.boss) state.shake = Math.max(state.shake, critical ? 3 : 1.4);
-  audio.hit(critical);
+  audio.hit(critical, weapon);
   if (enemy.hp <= 0) killEnemy(enemy, weapon, { critical, executed, canProc });
 }
 
@@ -2412,6 +2574,7 @@ function killEnemy(enemy, weapon = null, proc = {}) {
       state.wave = 2;
       announce("WAVE CLEARED", `阶段 ${forgeTiers[clearedTier - 1].roman} · 武器重构已开放`);
       addLog(`阶段 ${forgeTiers[clearedTier - 1].roman} 首波已清除，获得本阶段武器重构机会。`, true);
+      enemy.vacuumOnDrop = "首波清除，散落认知正在回收";
       if (!state.forgeOpened[clearedTier - 1]) queueReward("forge", clearedTier);
     }
   }
@@ -2521,11 +2684,17 @@ function killEnemy(enemy, weapon = null, proc = {}) {
     effects.push({ type: "ring", x: enemy.x, y: enemy.y, radius, color: solarProc ? "#ff8a4c" : "#a78bfa", life: .32, maxLife: .32 });
   }
   const rareDrop = enemy.elite || enemy.boss;
-  xpGems.push({ x: enemy.x, y: enemy.y, value: enemy.xp, radius: rareDrop ? 7 : 4, phase: Math.random() * Math.PI * 2 });
+  xpGems.push({ x: enemy.x, y: enemy.y, value: enemy.xp, radius: rareDrop ? 7 : 4, phase: Math.random() * Math.PI * 2, bornAt: state.time });
+  if (enemy.vacuumOnDrop) vacuumExperience(enemy.vacuumOnDrop);
   const missingHealth = 1 - player.hp / Math.max(1, player.maxHp);
   if (!enemy.boss && Math.random() < .025 + missingHealth * .055) pickups.push({ type: "heal", x: enemy.x + 8, y: enemy.y, value: 12, phase: Math.random() * Math.PI * 2 });
   if (!enemy.elite && !enemy.boss && Math.random() < .0035) pickups.push({ type: "cache", reward: "upgrade", x: enemy.x, y: enemy.y + 8, phase: Math.random() * Math.PI * 2 });
   if (enemy.elite && Math.random() < .5) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, elite: true });
+  if (enemy.eventTarget) {
+    pickups.push({ type: "cache", reward: enemy.eventReward || "upgrade", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, mythic: enemy.eventReward === "artifact" });
+    vacuumExperience("移动星核信使瓦解，认知与战利品正在回流");
+    addLog("移动星核信使已截获，强化宝箱已暴露。", true);
+  }
   if (enemy.boss && enemy.bossIndex < 2) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, mythic: true });
   burst(enemy.x, enemy.y, enemy.color, rareDrop ? 24 : 9, rareDrop ? 170 : 95);
   if (enemy.elite) addLog(`精英星兽「${enemy.speciesName}」已清除。高密度认知掉落。`, true);
@@ -2536,6 +2705,7 @@ function killEnemy(enemy, weapon = null, proc = {}) {
     ui.bossHud.hidden = true;
     state.shake = 20;
     addLog(`高危意识体「${enemy.name}」已瓦解。`, true);
+    vacuumExperience("Boss 瓦解，战区经验全部回收");
     announce("TARGET ELIMINATED", `${enemy.name} 已瓦解`);
     if (enemy.bossIndex === 2) {
       player.invulnerable = 2;
@@ -2548,7 +2718,9 @@ function killEnemy(enemy, weapon = null, proc = {}) {
 }
 
 function burst(x, y, color, count, speed) {
-  for (let i = 0; i < count; i += 1) {
+  const budgetScale = friendlyVfxAlpha();
+  const budgetedCount = Math.max(2, Math.round(count * Math.max(.38, budgetScale)));
+  for (let i = 0; i < budgetedCount; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const velocity = speed * (0.3 + Math.random() * 0.7);
     particles.push({
@@ -2566,6 +2738,7 @@ function burst(x, y, color, count, speed) {
 }
 
 function floatText(x, y, text, color, large = false) {
+  if (!large && particles.filter((particle) => particle.type === "text").length >= 42) return;
   particles.push({ type: "text", x, y, vx: 0, vy: -30, color, text: String(text), life: 0.65, maxLife: 0.65, size: large ? 15 : 10 });
 }
 
@@ -2578,6 +2751,12 @@ function gainXp(amount) {
     queueReward("upgrade");
   }
   updateHUD();
+}
+
+function vacuumExperience(reason = "散落认知开始回流") {
+  if (!xpGems.length) return;
+  for (const gem of xpGems) gem.vacuum = true;
+  addLog(`${reason}（${xpGems.length}）。`, true);
 }
 
 function fireEnemyVolley(enemy) {
@@ -2651,6 +2830,7 @@ function updateMutationZones() {
     }
     const color = zone.rule ? effectVisualColors[zone.rule.visual] : zone.type === "burn" ? "#ff7a38" : "#67e86f";
     effects.push({ type: "ring", x: zone.x, y: zone.y, radius: zone.radius, color, life: .5, maxLife: .5, style: zone.rule?.visual || (zone.type === "burn" ? "embers" : "spores") });
+    audio.zone(zone.weapon, zone.type);
   }
 
   mutationZones = mutationZones.filter((zone) => zone.expires > state.time);
@@ -2845,8 +3025,10 @@ function updateGems(dt) {
     const dx = player.x - gem.x;
     const dy = player.y - gem.y;
     const distance = Math.hypot(dx, dy) || 1;
-    if (distance < bonuses.magnet) {
-      const speed = 130 + (bonuses.magnet - distance) * 4.2;
+    const overdue = state.time - (gem.bornAt ?? state.time) >= 18;
+    const vacuuming = gem.vacuum || overdue;
+    if (vacuuming || distance < bonuses.magnet) {
+      const speed = vacuuming ? Math.min(960, 240 + distance * 1.1) : 130 + (bonuses.magnet - distance) * 4.2;
       gem.x += dx / distance * speed * dt;
       gem.y += dy / distance * speed * dt;
     }
@@ -2904,7 +3086,17 @@ function updateParticles(dt) {
   particles = particles.filter((particle) => particle.life > 0);
   for (const effect of effects) effect.life -= dt;
   effects = effects.filter((effect) => effect.life > 0);
-  if (effects.length > 360) effects.splice(0, effects.length - 360);
+  const effectCap = enemies.length > 140 ? 210 : enemies.length > 80 ? 250 : 300;
+  if (effects.length > effectCap) {
+    let excess = effects.length - effectCap;
+    effects = effects.filter((effect) => {
+      const protectedEffect = effect.source === "enemy" || effect.type === "screen";
+      if (excess > 0 && !protectedEffect) { excess -= 1; return false; }
+      return true;
+    });
+  }
+  const particleCap = enemies.length > 140 ? 220 : 310;
+  if (particles.length > particleCap) particles.splice(0, particles.length - particleCap);
 }
 
 function update(dt) {
@@ -2975,6 +3167,7 @@ function update(dt) {
       }
     }
   }
+  updateArenaHazards(dt);
   for (let index = 0; index < BOSS_TIMES.length; index += 1) {
     const forgeReady = Boolean(state.forgeOpened[index]);
     if (state.time >= BOSS_TIMES[index] && index <= state.stageIndex && state.openingWaveTier === 0 && forgeReady && !state.bossSpawned[index] && !currentBoss) {
@@ -3090,6 +3283,44 @@ function polygon(x, y, radius, sides, rotation = 0) {
     if (index === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
   }
   ctx.closePath();
+}
+
+function drawArenaHazards() {
+  for (const hazard of arenaHazards) {
+    if (hazard.type === "meteor" && hazard.impacted) continue;
+    const point = worldToScreen(hazard.x, hazard.y);
+    if (point.x < -hazard.radius * 2 || point.y < -hazard.radius * 2 || point.x > width + hazard.radius * 2 || point.y > height + hazard.radius * 2) continue;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.translate(point.x, point.y);
+    if (hazard.type === "meteor") {
+      const remaining = Math.max(0, hazard.triggerAt - state.time);
+      const pulse = 1 + Math.sin(state.time * 14) * .055;
+      ctx.fillStyle = `${hazard.color}14`;
+      ctx.strokeStyle = hazard.color;
+      ctx.globalAlpha = .4 + Math.max(0, .45 - remaining * .18);
+      ctx.lineWidth = Math.max(1.5, 4 - remaining * 1.2);
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(0, 0, hazard.radius * pulse, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(-hazard.radius, 0); ctx.lineTo(hazard.radius, 0); ctx.moveTo(0, -hazard.radius); ctx.lineTo(0, hazard.radius); ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.globalAlpha = .8; ctx.font = "bold 9px ui-monospace, Consolas, monospace"; ctx.textAlign = "center";
+      ctx.fillText(`${remaining.toFixed(1)}s`, 0, -hazard.radius - 8);
+    } else if (hazard.type === "rift") {
+      const pulse = 1 + Math.sin(state.time * 5) * .08;
+      const gradient = ctx.createRadialGradient(0, 0, 4, 0, 0, hazard.radius * pulse);
+      gradient.addColorStop(0, "rgba(4,2,12,.88)");
+      gradient.addColorStop(.48, `${hazard.color}35`);
+      gradient.addColorStop(1, `${hazard.color}08`);
+      ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, hazard.radius * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hazard.color; ctx.globalAlpha = .62; ctx.lineWidth = 2;
+      for (let ring = 0; ring < 3; ring += 1) {
+        ctx.beginPath(); ctx.ellipse(0, 0, hazard.radius * (.42 + ring * .25), hazard.radius * (.2 + ring * .12), state.time * (.25 + ring * .08), 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(0,0,0,.85)"; ctx.beginPath(); ctx.arc(0, 0, hazard.radius * .18, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
 }
 
 function drawGems() {
@@ -3392,6 +3623,15 @@ function drawEnemies() {
     drawEnemyModel(enemy);
     ctx.restore();
 
+    if (enemy.eventTarget) {
+      const pulse = 1 + Math.sin(state.time * 8) * .1;
+      ctx.save();
+      ctx.strokeStyle = "#ffd166"; ctx.fillStyle = "#ffd166"; ctx.shadowBlur = 16; ctx.shadowColor = "#ffd166"; ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(point.x, point.y, (enemy.radius + 12) * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = "bold 8px ui-monospace, Consolas, monospace"; ctx.textAlign = "center"; ctx.fillText("MOVING TARGET", point.x, point.y - enemy.radius - 18);
+      ctx.restore();
+    }
+
     if (enemy.burnUntil > state.time || enemy.poisonUntil > state.time) {
       ctx.save(); ctx.globalCompositeOperation = "lighter";
       if (enemy.burnUntil > state.time) {
@@ -3628,9 +3868,11 @@ function drawProjectileBody(projectile) {
 function drawProjectiles() {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
+  const projectileAlpha = projectiles.length > 180 ? .48 : projectiles.length > 110 ? .68 : 1;
   for (const projectile of projectiles) {
     const point = worldToScreen(projectile.x, projectile.y);
     ctx.save();
+    ctx.globalAlpha = projectileAlpha;
     ctx.translate(point.x, point.y);
     ctx.rotate(projectile.angle);
     drawProjectileBody(projectile);
@@ -4478,7 +4720,8 @@ function drawSlashEffect(effect, point, alpha) {
 
 function drawEffects() {
   for (const effect of effects) {
-    const alpha = Math.max(0, effect.life / effect.maxLife);
+    const priority = effect.source === "enemy" || effect.type === "screen" ? 1 : friendlyVfxAlpha();
+    const alpha = Math.max(0, effect.life / effect.maxLife) * priority;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     if (effect.type === "beam") {
@@ -4668,10 +4911,31 @@ function drawBossCompass() {
   ctx.fillText(`BOSS · ${Math.round(Math.hypot(dx, dy) / 10)}m`, 0, -15); ctx.restore();
 }
 
+function drawEventTargetCompass() {
+  const target = enemies.find((enemy) => enemy.eventTarget && !enemy.dead);
+  if (!target) return;
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const point = worldToScreen(target.x, target.y);
+  const margin = 42;
+  if (point.x >= margin && point.y >= margin && point.x <= width - margin && point.y <= height - margin) return;
+  const radiusX = Math.max(20, width / 2 - margin);
+  const radiusY = Math.max(20, height / 2 - margin);
+  const scale = Math.min(radiusX / Math.max(1, Math.abs(dx)), radiusY / Math.max(1, Math.abs(dy)));
+  const x = width / 2 + dx * scale;
+  const y = height / 2 + dy * scale;
+  const angle = Math.atan2(dy, dx);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.fillStyle = "#ffd166"; ctx.shadowBlur = 18; ctx.shadowColor = "#ffd166";
+  ctx.beginPath(); ctx.moveTo(13, 0); ctx.lineTo(-8, -7); ctx.lineTo(-4, 0); ctx.lineTo(-8, 7); ctx.closePath(); ctx.fill();
+  ctx.rotate(-angle); ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "bold 8px ui-monospace, Consolas, monospace";
+  ctx.fillText("星核信使", 0, -14); ctx.restore();
+}
+
 function render() {
   ctx.save();
   if (state.shake > 0) ctx.translate((Math.random() - .5) * state.shake, (Math.random() - .5) * state.shake);
   drawGrid();
+  drawArenaHazards();
   drawGems();
   drawPickups();
   drawEnemies();
@@ -4682,6 +4946,7 @@ function render() {
   drawParticles();
   drawPlayer();
   drawBossCompass();
+  drawEventTargetCompass();
 
   if (state.running) {
     ctx.save();
@@ -4780,6 +5045,7 @@ function openNextReward() {
 }
 
 function closeReward() {
+  stopWeaponPreview();
   state.forging = false;
   state.rewardOpen = false;
   ui.forge.hidden = true;
@@ -4793,6 +5059,7 @@ function closeReward() {
 }
 
 function openForge(tier = state.stageIndex + 1) {
+  stopWeaponPreview();
   const forge = forgeTiers[Math.max(0, Math.min(3, tier - 1))];
   state.paused = true;
   state.forging = true;
@@ -5263,6 +5530,7 @@ function rerollUpgrades() {
 }
 
 function showForgeForm() {
+  stopWeaponPreview();
   ui.wishForm.hidden = false;
   ui.quickWishes.hidden = true;
   ui.forgeLoading.hidden = true;
@@ -5284,6 +5552,7 @@ function setLoading() {
 }
 
 async function generateWeapon(wish) {
+  stopWeaponPreview();
   ui.wishForm.hidden = true;
   ui.quickWishes.hidden = true;
   ui.forgeLoading.hidden = false;
@@ -5342,8 +5611,12 @@ function showWeaponResult(weapon, adjustments) {
   ui.resultDescription.textContent = weapon.behavior_summary || weapon.description;
   ui.resultTradeoff.textContent = weapon.tradeoff_text;
   ui.resultStats.replaceChildren();
+  const attacksPerSecond = 1 / Math.max(.18, Number(weapon.cooldown) || 1);
+  const baseDps = (Number(weapon.damage) || 0) * attacksPerSecond;
   addResultStat("单次伤害", weapon.damage);
   addResultStat("攻击间隔", `${weapon.cooldown}s`);
+  addResultStat("每秒攻击", `${attacksPerSecond.toFixed(2)}/s`);
+  addResultStat("基础 DPS", baseDps.toFixed(1));
   addResultStat(weapon.delivery === "orbit" ? "环绕数量" : "投射数量", weapon.projectile_count);
   addResultStat("作用距离", Math.round(weapon.range));
   const trajectoryLabels = { straight: "直线", homing: "主动追踪", boomerang: "折返", spiral: "螺旋", wave: "蛇形", skyfall: "天降" };
@@ -5360,33 +5633,160 @@ function showWeaponResult(weapon, adjustments) {
   drawWeaponPreview(weapon);
 }
 
-function drawWeaponPreview(weapon) {
+function stopWeaponPreview() {
+  if (weaponPreviewFrame) cancelAnimationFrame(weaponPreviewFrame);
+  weaponPreviewFrame = 0;
+}
+
+function previewProjectilePosition(trajectory, progress, start, target, offset, time) {
+  if (trajectory === "skyfall") {
+    return { x: target.x + offset * 18, y: target.y - 150 + progress * 150 };
+  }
+  if (trajectory === "boomerang") {
+    const outbound = progress < .62;
+    const segment = outbound ? progress / .62 : (progress - .62) / .38;
+    const from = outbound ? start : target;
+    const to = outbound ? target : start;
+    return { x: from.x + (to.x - from.x) * segment, y: from.y + (to.y - from.y) * segment + offset * 8 };
+  }
+  const x = start.x + (target.x - start.x) * progress;
+  const y = start.y + (target.y - start.y) * progress;
+  const dx = target.x - start.x;
+  const dy = target.y - start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  let curve = offset * 10;
+  if (trajectory === "homing") curve += Math.sin(progress * Math.PI) * (34 + offset * 3);
+  else if (trajectory === "spiral") curve += Math.sin(progress * Math.PI * 5 + offset) * 24 * (1 - progress * .25);
+  else if (trajectory === "wave") curve += Math.sin(progress * Math.PI * 4 + time * 2 + offset) * 22;
+  return { x: x + normalX * curve, y: y + normalY * curve };
+}
+
+function drawWeaponPreviewFrame(weapon, elapsed) {
   const preview = ui.resultWeaponCanvas;
   const previewCtx = preview.getContext("2d");
   const w = preview.width;
   const h = preview.height;
-  previewCtx.clearRect(0, 0, w, h);
-  const gradient = previewCtx.createLinearGradient(0, 0, w, h);
-  gradient.addColorStop(0, "#08090e");
-  gradient.addColorStop(.58, "#10111a");
-  gradient.addColorStop(1, `${weapon.color}22`);
-  previewCtx.fillStyle = gradient;
-  previewCtx.fillRect(0, 0, w, h);
-  previewCtx.strokeStyle = "rgba(255,255,255,.045)";
-  previewCtx.lineWidth = 1;
-  for (let x = 0; x < w; x += 28) { previewCtx.beginPath(); previewCtx.moveTo(x, 0); previewCtx.lineTo(x, h); previewCtx.stroke(); }
+  const source = { x: w * .19, y: h * .55 };
+  const targets = [
+    { x: w * .68, y: h * .31, radius: 15 },
+    { x: w * .82, y: h * .53, radius: 19 },
+    { x: w * .69, y: h * .78, radius: 14 },
+    { x: w * .54, y: h * .58, radius: 13 },
+  ];
+  const gradient = previewCtx.createRadialGradient(w * .48, h * .48, 10, w * .48, h * .48, w * .62);
+  gradient.addColorStop(0, `${weapon.color}18`);
+  gradient.addColorStop(.48, "#0b1220");
+  gradient.addColorStop(1, "#05060b");
+  previewCtx.fillStyle = gradient; previewCtx.fillRect(0, 0, w, h);
+  previewCtx.strokeStyle = "rgba(130,210,255,.06)"; previewCtx.lineWidth = 1;
+  const gridOffset = elapsed * 8 % 28;
+  for (let x = -28 + gridOffset; x < w + 28; x += 28) { previewCtx.beginPath(); previewCtx.moveTo(x, 0); previewCtx.lineTo(x, h); previewCtx.stroke(); }
   for (let y = 0; y < h; y += 28) { previewCtx.beginPath(); previewCtx.moveTo(0, y); previewCtx.lineTo(w, y); previewCtx.stroke(); }
-  previewCtx.fillStyle = "rgba(255,255,255,.36)";
-  previewCtx.font = "10px ui-monospace, Consolas, monospace";
-  const previewLabel = document.body.classList.contains("trailer-mode")
-    ? `${(visualMeta[inferVisualForm(weapon)] || visualMeta.rifle).label} / 已生成武器实体`
-    : `${(visualMeta[inferVisualForm(weapon)] || visualMeta.rifle).label.toUpperCase()} / GENERATED PHYSICAL FORM`;
-  previewCtx.fillText(previewLabel, 18, 24);
-  drawWeaponModel(previewCtx, weapon, w * .54, h * .57, 0, 2.05, 1);
+
+  const previewRange = Math.min(w * .48, 70 + Number(weapon.range || 200) * .34);
+  previewCtx.save(); previewCtx.strokeStyle = `${weapon.color}24`; previewCtx.setLineDash([5, 7]);
+  previewCtx.beginPath(); previewCtx.arc(source.x, source.y, previewRange, 0, Math.PI * 2); previewCtx.stroke(); previewCtx.restore();
+
+  const attackInterval = Math.max(.52, Math.min(1.35, Number(weapon.cooldown) || 1));
+  const attackProgress = (elapsed % attackInterval) / attackInterval;
+  const shotIndex = Math.floor(elapsed / attackInterval);
+  const targetIndex = weapon.targeting === "strongest" ? 1 : weapon.targeting === "cluster" ? 3 : weapon.targeting === "random" ? shotIndex % targets.length : 3;
+  const target = targets[targetIndex];
+
+  for (const [index, enemy] of targets.entries()) {
+    const hitPulse = index === targetIndex && attackProgress > .78 ? (1 - attackProgress) / .22 : 0;
+    previewCtx.save(); previewCtx.translate(enemy.x, enemy.y); previewCtx.rotate(elapsed * .35 + index);
+    previewCtx.shadowBlur = 14 + hitPulse * 25; previewCtx.shadowColor = weapon.color;
+    previewCtx.fillStyle = index === targetIndex ? `${weapon.color}aa` : "#25314a";
+    previewCtx.strokeStyle = index === targetIndex ? "#ffffff" : "#7990b8"; previewCtx.lineWidth = 1.2;
+    polygonWithContext(previewCtx, 0, 0, enemy.radius * (1 + hitPulse * .25), 6, Math.PI / 6); previewCtx.fill(); previewCtx.stroke();
+    previewCtx.fillStyle = "#080b12"; previewCtx.beginPath(); previewCtx.arc(0, 0, enemy.radius * .35, 0, Math.PI * 2); previewCtx.fill(); previewCtx.restore();
+  }
+
+  previewCtx.save(); previewCtx.globalCompositeOperation = "lighter"; previewCtx.shadowColor = weapon.color; previewCtx.shadowBlur = 16;
+  if (weapon.delivery === "beam") {
+    const pulse = Math.max(0, 1 - attackProgress * 4.8);
+    if (pulse > 0) {
+      previewCtx.globalAlpha = .25 + pulse * .75; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 3 + pulse * Number(weapon.projectile_size || 5) * .5;
+      previewCtx.beginPath(); previewCtx.moveTo(source.x + 30, source.y); previewCtx.lineTo(target.x, target.y); previewCtx.stroke();
+      previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.2; previewCtx.stroke();
+    }
+  } else if (weapon.delivery === "aura") {
+    const radius = 30 + attackProgress * Math.min(150, Number(weapon.range || 160) * .7);
+    previewCtx.globalAlpha = 1 - attackProgress * .7; previewCtx.fillStyle = `${weapon.color}12`; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 2.5;
+    previewCtx.beginPath(); previewCtx.arc(source.x, source.y, radius, 0, Math.PI * 2); previewCtx.fill(); previewCtx.stroke();
+  } else if (weapon.delivery === "orbit") {
+    const count = Math.max(1, Math.min(8, Number(weapon.projectile_count) || 1));
+    const radius = Math.min(105, Math.max(48, Number(weapon.range || 120) * .48));
+    for (let index = 0; index < count; index += 1) {
+      const angle = elapsed * 2.2 + index / count * Math.PI * 2;
+      const x = source.x + Math.cos(angle) * radius;
+      const y = source.y + Math.sin(angle) * radius * .62;
+      previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(x, y, 5 + Number(weapon.projectile_size || 5) * .18, 0, Math.PI * 2); previewCtx.fill();
+    }
+  } else if (weapon.delivery === "melee") {
+    const reach = Math.min(155, Math.max(70, Number(weapon.range || 100)));
+    const swing = -1.05 + Math.min(1, attackProgress * 2.2) * 2.1;
+    previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 9 * (1 - Math.min(.75, attackProgress)); previewCtx.lineCap = "round";
+    previewCtx.beginPath(); previewCtx.arc(source.x, source.y, reach, swing - .85, swing + .25); previewCtx.stroke();
+    previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.5; previewCtx.stroke();
+  } else {
+    const count = Math.max(1, Math.min(8, Number(weapon.projectile_count) || 1));
+    for (let index = 0; index < count; index += 1) {
+      const offset = index - (count - 1) / 2;
+      const point = previewProjectilePosition(weapon.trajectory, attackProgress, source, target, offset, elapsed);
+      const previous = previewProjectilePosition(weapon.trajectory, Math.max(0, attackProgress - .08), source, target, offset, elapsed);
+      previewCtx.strokeStyle = `${weapon.color}88`; previewCtx.lineWidth = 2; previewCtx.beginPath(); previewCtx.moveTo(previous.x, previous.y); previewCtx.lineTo(point.x, point.y); previewCtx.stroke();
+      previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(point.x, point.y, Math.max(3, Number(weapon.projectile_size || 5) * .48), 0, Math.PI * 2); previewCtx.fill();
+    }
+  }
+
+  if (attackProgress > .8 && (Number(weapon.explosion_radius) > 0 || Number(weapon.burn_damage) > 0 || Number(weapon.poison_damage) > 0 || Number(weapon.slow_percent) > 0)) {
+    const impactProgress = (attackProgress - .8) / .2;
+    const radius = 18 + impactProgress * Math.max(38, Math.min(105, Number(weapon.explosion_radius) || 58));
+    const statusColor = Number(weapon.poison_damage) > 0 ? "#67e86f" : Number(weapon.burn_damage) > 0 ? "#ff7a38" : weapon.color;
+    previewCtx.globalAlpha = 1 - impactProgress * .72; previewCtx.strokeStyle = statusColor; previewCtx.fillStyle = `${statusColor}18`; previewCtx.lineWidth = 2;
+    previewCtx.beginPath(); previewCtx.arc(target.x, target.y, radius, 0, Math.PI * 2); previewCtx.fill(); previewCtx.stroke();
+  }
+  previewCtx.restore();
+
+  previewCtx.save(); previewCtx.globalCompositeOperation = "lighter";
+  drawWeaponModel(previewCtx, weapon, source.x, source.y, Math.atan2(target.y - source.y, target.x - source.x), 1.45, 1);
+  previewCtx.restore();
+  previewCtx.fillStyle = "rgba(255,255,255,.48)"; previewCtx.font = "9px ui-monospace, Consolas, monospace";
+  const trajectoryLabels = { straight: "直线", homing: "主动追踪", boomerang: "折返", spiral: "螺旋", wave: "蛇形", skyfall: "天降" };
+  previewCtx.fillText(`${deliveryMeta[weapon.delivery]?.label || "投射武器"} · ${trajectoryLabels[weapon.trajectory] || "直线"} · ${(weapon.tags || []).slice(0, 2).join(" / ")}`, 15, h - 16);
+}
+
+function drawWeaponPreview(weapon) {
+  stopWeaponPreview();
+  weaponPreviewStartedAt = performance.now();
+  const renderPreview = (now) => {
+    if (ui.forge.hidden || ui.weaponResult.hidden || previewWeapon !== weapon) { stopWeaponPreview(); return; }
+    const elapsedMs = (now - weaponPreviewStartedAt) % 5000;
+    const elapsed = elapsedMs / 1000;
+    drawWeaponPreviewFrame(weapon, elapsed);
+    ui.resultPreviewTime.textContent = `${(5 - elapsed).toFixed(1)}s`;
+    ui.resultPreviewProgress.style.width = `${elapsedMs / 50}%`;
+    weaponPreviewFrame = requestAnimationFrame(renderPreview);
+  };
+  weaponPreviewFrame = requestAnimationFrame(renderPreview);
+}
+
+function rejectWeaponAndReforge() {
+  if (!previewWeapon) return;
+  addLog(`放弃「${previewWeapon.name}」，本阶段重构机会仍然保留。`, true);
+  previewWeapon = null;
+  stopWeaponPreview();
+  showForgeForm();
+  ui.wishInput.select();
 }
 
 function acceptWeapon() {
   if (!previewWeapon) return;
+  stopWeaponPreview();
   previewWeapon = hydrateWeapon(previewWeapon);
   previewWeapon.timer = 0.15;
   previewWeapon.forged = true;
@@ -5566,6 +5966,7 @@ ui.wishForm.addEventListener("submit", (event) => {
   generateWeapon(wish);
 });
 ui.retry.addEventListener("click", showForgeForm);
+ui.reforge.addEventListener("click", rejectWeaponAndReforge);
 ui.accept.addEventListener("click", acceptWeapon);
 
 resizeCanvas();

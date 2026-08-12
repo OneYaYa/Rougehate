@@ -318,7 +318,7 @@ button { color: inherit; }
 .archetype-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: 9px; margin-top: 15px; }
 .archetype-actions .ghost-button { min-width: 100px; }
 .archetype-actions .primary-button { min-width: 280px; }
-.forge-modal { width: min(840px, 100%); max-height: min(720px, 94vh); display: grid; grid-template-columns: 58px 1fr; overflow: auto; border: 1px solid rgba(255,255,255,.14); background: #111118; box-shadow: 0 35px 120px rgba(0,0,0,.72); }
+.forge-modal { width: min(920px, 100%); max-height: 94vh; display: grid; grid-template-columns: 58px 1fr; overflow: auto; border: 1px solid rgba(255,255,255,.14); background: #111118; box-shadow: 0 35px 120px rgba(0,0,0,.72); }
 .forge-rail { display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-right: 1px solid var(--line); background: #0b0b10; }
 .forge-rail span { color: var(--red); font: 800 11px var(--font-display); letter-spacing: .18em; writing-mode: vertical-rl; }
 .forge-rail i { width: 1px; flex: 1; min-height: 100px; margin: 17px 0; background: linear-gradient(var(--red), transparent); }
@@ -365,7 +365,12 @@ button { color: inherit; }
 .weapon-glyph { width: 47px; height: 47px; display: grid; place-items: center; color: var(--result-color); border: 1px solid color-mix(in srgb, var(--result-color) 50%, transparent); font-size: 23px; }
 .result-title span:not(.weapon-glyph) { color: var(--result-color); font-size: 8px; letter-spacing: .12em; }
 .result-title h3 { margin: 3px 0 0; font: 23px var(--font-display); }
-.weapon-preview { position: relative; width: 100%; height: 112px; display: block; margin: 14px 0 8px; border: 1px solid rgba(255,255,255,.07); background: #08090e; }
+.weapon-preview-video { position: relative; margin: 14px 0 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.1); background: #06070c; }
+.weapon-preview { width: 100%; aspect-ratio: 19 / 6.5; min-height: 190px; display: block; background: #08090e; }
+.preview-video-hud { position: absolute; inset: 11px 13px auto; z-index: 2; display: flex; justify-content: space-between; pointer-events: none; color: rgba(255,255,255,.58); font: 700 8px var(--font-display); letter-spacing: .13em; text-shadow: 0 1px 8px #000; }
+.preview-video-hud strong { color: #f4f2f5; font-size: 9px; }
+.preview-video-progress { position: absolute; inset: auto 0 0; height: 3px; background: rgba(255,255,255,.08); }
+.preview-video-progress i { display: block; width: 0; height: 100%; background: var(--result-color, var(--red)); box-shadow: 0 0 14px var(--result-color, var(--red)); }
 .weapon-result > p { position: relative; color: #9997a1; font-size: 11px; }
 .result-stats { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin: 18px 0 13px; }
 .result-stat { padding: 9px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.02); }
@@ -377,7 +382,9 @@ button { color: inherit; }
 .tradeoff-row span { padding: 3px 6px; color: var(--red); border: 1px solid rgba(255,54,95,.3); }
 .tradeoff-row strong { color: #c2c0c8; font-weight: 500; }
 .weapon-result .balance-note { margin: 10px 0 0; color: #ffd166; font-size: 8px; }
-.accept-button { position: relative; width: 100%; margin-top: 17px; justify-content: center; }
+.result-actions { position: relative; display: grid; grid-template-columns: minmax(150px, .42fr) 1fr; gap: 10px; margin-top: 17px; }
+.result-actions .accept-button, .result-actions .reforge-button { width: 100%; margin: 0; justify-content: center; }
+.reforge-button { border-color: rgba(255,255,255,.18); }
 
 .forge-error { margin-top: 22px; padding: 18px; border: 1px solid rgba(255,54,95,.25); background: rgba(255,54,95,.05); }
 .forge-error strong { color: var(--red); font: 18px var(--font-display); }
@@ -523,6 +530,8 @@ button { color: inherit; }
   .budget-chip { display: none; }
   .form-actions { align-items: stretch; flex-direction: column-reverse; }
   .forge-button { width: 100%; }
+  .result-actions { grid-template-columns: 1fr; }
+  .weapon-preview { min-height: 165px; }
   .result-stats { grid-template-columns: repeat(2, 1fr); }
   .stage-hud { top: 72px; width: 160px; }
   .boss-hud { top: 108px; width: 72%; }

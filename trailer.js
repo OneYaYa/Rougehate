@@ -657,11 +657,11 @@
     ui.balanceNote.hidden = true;
     ui.accept.textContent = "装备";
     ui.resultDelivery.textContent = "投射武器";
-    ["伤害", "间隔", "数量", "距离", "轨迹", "强度"].forEach((text, index) => {
+    ["伤害", "间隔", "攻速", "DPS", "数量", "距离", "轨迹", "强度"].forEach((text, index) => {
       const label = ui.resultStats.querySelectorAll(".result-stat span")[index];
       if (label) label.textContent = text;
     });
-    const trajectoryValue = ui.resultStats.querySelectorAll(".result-stat strong")[4];
+    const trajectoryValue = ui.resultStats.querySelectorAll(".result-stat strong")[6];
     if (trajectoryValue) trajectoryValue.textContent = "主动追踪";
     ["# 追猎", "# 幼星", "# 折返", "# 雷暴"].forEach((text, index) => {
       const tag = ui.resultTags.children[index];

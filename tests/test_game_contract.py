@@ -5,6 +5,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 GAME = (ROOT / "game.js").read_text(encoding="utf-8")
 VFX = (ROOT / "vfx-library.js").read_text(encoding="utf-8")
+INDEX = (ROOT / "index.html").read_text(encoding="utf-8")
+STYLES = (ROOT / "styles.css").read_text(encoding="utf-8")
 
 
 class BrowserGameContractTests(unittest.TestCase):
@@ -56,6 +58,36 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn("24 hand-authored visual signatures", VFX)
         self.assertIn("count: Object.keys(recipes).length", VFX)
         self.assertIn("projectile, trail, beam, impact, cast, slash, aura, attachment", VFX)
+
+    def test_three_minute_stages_have_random_mid_stage_events(self):
+        self.assertIn("const STAGE_DURATION = 180;", GAME)
+        self.assertIn("const BOSS_TIMES = [160, 340, 520];", GAME)
+        self.assertIn('{ id: "meteor"', GAME)
+        self.assertIn('{ id: "courier"', GAME)
+        self.assertIn('{ id: "rift"', GAME)
+        self.assertIn("function updateArenaHazards(dt)", GAME)
+        self.assertIn("function drawEventTargetCompass()", GAME)
+
+    def test_experience_recovery_prevents_distant_progress_loss(self):
+        self.assertIn("function vacuumExperience(", GAME)
+        self.assertIn("const overdue = state.time - (gem.bornAt ?? state.time) >= 18", GAME)
+        self.assertIn('vacuumExperience("Boss 瓦解，战区经验全部回收")', GAME)
+
+    def test_generated_weapon_has_looping_preview_and_rebuild_choice(self):
+        self.assertIn('id="resultPreviewTime"', INDEX)
+        self.assertIn('id="reforgeButton"', INDEX)
+        self.assertIn("function drawWeaponPreviewFrame(weapon, elapsed)", GAME)
+        self.assertIn("% 5000", GAME)
+        self.assertIn("function rejectWeaponAndReforge()", GAME)
+        self.assertIn(".weapon-preview-video", STYLES)
+
+    def test_weapon_stats_audio_and_visual_budget_are_explicit(self):
+        self.assertIn('makeMiniStat("DPS", dps)', GAME)
+        self.assertIn('makeMiniStat("攻速", `${attacksPerSecond}/s`)', GAME)
+        self.assertIn("profileFor(weapon = {})", GAME)
+        self.assertIn('audio.shoot("projectile", weapon)', GAME)
+        self.assertIn("function friendlyVfxAlpha()", GAME)
+        self.assertIn('effect.source === "enemy"', GAME)
 
 
 if __name__ == "__main__":

@@ -89,7 +89,7 @@
           <div class="intro-copy">
             <span class="chapter">DEEP SPACE PROTOCOL / 深空远征</span>
             <h1>把你的<span>妄想</span><br>变成武器</h1>
-            <p>展开约 12 分钟的深空远征。清除第一阶段首波、击杀首领并直面终极意识，在四个战斗节点重构新武器。</p>
+            <p>展开约 9 分钟的深空远征。清除第一阶段首波、击杀首领并直面终极意识，在四个战斗节点重构新武器。</p>
             <div class="profile-strip">
               <div><span>历史最高</span><strong id="profileBest">00:00</strong></div>
               <div><span>异常清除</span><strong id="profileKills">0</strong></div>
@@ -255,13 +255,20 @@
             <span class="weapon-glyph" id="resultGlyph">◈</span>
             <div><span id="resultDelivery">投射武器</span><h3 id="resultName">未命名武器</h3></div>
           </div>
-          <canvas class="weapon-preview" id="resultWeaponCanvas" width="620" height="150" aria-label="生成武器外观预览"></canvas>
+          <div class="weapon-preview-video">
+            <canvas class="weapon-preview" id="resultWeaponCanvas" width="760" height="260" aria-label="生成武器五秒实战视频预览"></canvas>
+            <div class="preview-video-hud"><span>LIVE SIMULATION / 5 秒实战预览</span><strong id="resultPreviewTime">5.0s</strong></div>
+            <div class="preview-video-progress"><i id="resultPreviewProgress"></i></div>
+          </div>
           <p id="resultDescription"></p>
           <div class="result-stats" id="resultStats"></div>
           <div class="tag-row" id="resultTags"></div>
           <div class="tradeoff-row"><span>代价</span><strong id="resultTradeoff"></strong></div>
           <p class="balance-note" id="balanceNote" hidden></p>
-          <button class="primary-button accept-button" id="acceptButton">接入为新的攻击手段</button>
+          <div class="result-actions">
+            <button class="ghost-button reforge-button" id="reforgeButton" type="button">放弃并重新构想</button>
+            <button class="primary-button accept-button" id="acceptButton" type="button">确认重构并接入</button>
+          </div>
         </div>
 
         <div class="forge-error" id="forgeError" hidden>
