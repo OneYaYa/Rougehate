@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 GAME = (ROOT / "game.js").read_text(encoding="utf-8")
+VFX = (ROOT / "vfx-library.js").read_text(encoding="utf-8")
 
 
 class BrowserGameContractTests(unittest.TestCase):
@@ -47,8 +48,14 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn('type: "cache"', GAME)
         self.assertIn("function drawBossCompass()", GAME)
         self.assertIn("function weaponTarget(", GAME)
-        self.assertIn("Twelve modular structure genes", GAME)
-        self.assertIn("Math.min(11", GAME)
+        self.assertIn("Twenty-four visual signatures", GAME)
+        self.assertIn("Math.min(23", GAME)
+
+    def test_vfx_library_has_216_non_color_recipes(self):
+        self.assertIn('const chassis = ["rifle", "cannon", "blade", "daggers", "bow", "staff", "orb", "tome", "drone"]', VFX)
+        self.assertIn("24 hand-authored visual signatures", VFX)
+        self.assertIn("count: Object.keys(recipes).length", VFX)
+        self.assertIn("projectile, trail, beam, impact, cast, slash, aura, attachment", VFX)
 
 
 if __name__ == "__main__":

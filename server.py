@@ -34,6 +34,7 @@ STATIC_FILES = {
     "/": "/index.html",
     "/index.html": "/index.html",
     "/styles.css": "/styles.css",
+    "/vfx-library.js": "/vfx-library.js",
     "/game.js": "/game.js",
     "/trailer.css": "/trailer.css",
     "/trailer.js": "/trailer.js",
@@ -96,7 +97,7 @@ WEAPON_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["nearest", "strongest", "cluster", "random"],
         },
-        "visual_variant": {"type": "integer", "minimum": 0, "maximum": 11},
+        "visual_variant": {"type": "integer", "minimum": 0, "maximum": 23},
         "secondary_color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
         "behavior_summary": {"type": "string"},
         "visual_motif": {"type": "string"},
@@ -327,7 +328,7 @@ SYSTEM_PROMPT = """你是肉鸽动作游戏《ROUGE HATE》的武器设计编译
 - visual_form 决定玩家真正看到的实体模型，必须贴合愿望：枪械用 rifle/cannon，刀剑用 blade/daggers，弓用 bow，法器用 staff/orb/tome，机械召唤物用 drone。
 - 非 projectile 仍需填写全部字段；用合理值填写暂时无效的字段。
 - color 必须是 #RRGGBB。名称、描述、tradeoff_text 和 tags 使用简体中文。
-- behavior_summary 用一句话逐字核对玩家得到的实际行为；description 必须与它一致。visual_variant 从 0—11 选择不同轮廓，visual_motif 写具体材质或生物结构，避免空泛科技术语。
+- behavior_summary 用一句话逐字核对玩家得到的实际行为；description 必须与它一致。visual_variant 从 0—23 选择不同的视觉签名，必须依据武器的形状、运动与命中感觉选择，不能只靠换色；visual_motif 写具体材质或生物结构，避免空泛科技术语。
 - 描述要具体说明实际机制，不写未被字段表达的能力。
 """
 
@@ -426,7 +427,7 @@ def rebalance_weapon(
     target_modes = {"nearest", "strongest", "cluster", "random"}
     weapon["targeting"] = weapon.get("targeting") if weapon.get("targeting") in target_modes else "nearest"
     variant_seed = int(hashlib.sha256(f"{wish}|{weapon['name']}".encode("utf-8")).hexdigest()[:8], 16)
-    weapon["visual_variant"] = int(clamp(weapon.get("visual_variant", variant_seed % 12), 0, 11))
+    weapon["visual_variant"] = int(clamp(weapon.get("visual_variant", variant_seed % 24), 0, 23))
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(weapon.get("secondary_color", ""))):
         secondary_palette = ["#f1f0eb", "#18213a", "#ffd166", "#58e6ff", "#ff7a38", "#a9ff85"]
         weapon["secondary_color"] = secondary_palette[(variant_seed // 12) % len(secondary_palette)]
@@ -646,7 +647,7 @@ def offline_weapon(wish: str, level: int) -> dict[str, Any]:
         "visual_form": "rifle",
         "trajectory": "straight",
         "targeting": "nearest",
-        "visual_variant": seed % 12,
+        "visual_variant": seed % 24,
         "secondary_color": "#f1f0eb",
         "behavior_summary": "向最近的敌人发射投射物。",
         "visual_motif": "异星合金与发光核心",

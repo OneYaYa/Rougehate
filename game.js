@@ -756,7 +756,16 @@ function runtimeExplosion(weapon) {
   return base * bonuses.area * (hasSynergy("breach") ? 1.2 : 1);
 }
 
+const vfxLibrary = window.ROUGE_VFX_LIBRARY;
+
+function weaponVfxRecipe(weapon) {
+  if (!vfxLibrary || vfxLibrary.count < 216) return null;
+  return vfxLibrary.getRecipe({ ...weapon, visual_form: inferVisualForm(weapon || {}) });
+}
+
 function beamStyleForWeapon(weapon) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (recipe) return recipe.beam;
   const form = inferVisualForm(weapon);
   if (["staff", "orb", "tome"].includes(form)) return "ribbon";
   if (form === "cannon") return "lance";
@@ -765,6 +774,8 @@ function beamStyleForWeapon(weapon) {
 }
 
 function ringStyleForWeapon(weapon) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (recipe) return recipe.aura;
   const form = inferVisualForm(weapon);
   if (form === "tome") return "runes";
   if (form === "orb" || weapon.delivery === "aura") return "field";
@@ -773,6 +784,8 @@ function ringStyleForWeapon(weapon) {
 }
 
 function slashStyleForWeapon(weapon) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (recipe) return recipe.slash;
   const form = inferVisualForm(weapon);
   if (form === "daggers") return "daggers";
   if (weaponMutation(weapon, "crescent")) return "crescent";
@@ -845,7 +858,7 @@ function hydrateWeapon(raw, starter = false) {
   weapon.trajectory = ["straight", "homing", "boomerang", "spiral", "wave", "skyfall"].includes(raw?.trajectory) ? raw.trajectory : "straight";
   weapon.targeting = ["nearest", "strongest", "cluster", "random"].includes(raw?.targeting) ? raw.targeting : "nearest";
   const hash = [...String(weapon.name)].reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
-  weapon.visual_variant = Number.isInteger(raw?.visual_variant) ? Math.max(0, Math.min(11, raw.visual_variant)) : hash % 12;
+  weapon.visual_variant = Number.isInteger(raw?.visual_variant) ? Math.max(0, Math.min(23, raw.visual_variant)) : hash % 24;
   weapon.secondary_color = /^#[0-9a-f]{6}$/i.test(raw?.secondary_color || "") ? raw.secondary_color : ["#f1f0eb", "#18213a", "#ffd166", "#58e6ff"][(hash >>> 4) % 4];
   weapon.poison_damage = Number(raw?.poison_damage) || 0;
   weapon.behavior_summary = String(raw?.behavior_summary || weapon.description || "");
@@ -1600,6 +1613,37 @@ function normalizeAngle(angle) {
   return angle;
 }
 
+function weaponVfxIntensity(weapon) {
+  const score = Number(weapon?.balance_score) || (runtimeDamage(weapon) / Math.max(.18, runtimeCooldown(weapon)));
+  return Math.max(.72, Math.min(1.42, .72 + score / 260));
+}
+
+function emitWeaponCast(weapon, x, y, angle = 0, scale = 1) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (!recipe || effects.length > 320) return;
+  const intensity = weaponVfxIntensity(weapon);
+  const life = (.18 + (recipe.timing === "linger" ? .09 : recipe.timing === "pulse" ? .05 : 0)) * Math.min(1.2, intensity);
+  effects.push({
+    type: "cast", x, y, angle, radius: (16 + (weapon.projectile_size || 5) * 1.8) * scale * intensity,
+    color: weapon.color, secondaryColor: weapon.secondary_color || "#f1f0eb",
+    style: recipe.cast, form: recipe.form, recipe, life, maxLife: life,
+  });
+}
+
+function emitWeaponImpact(enemy, weapon, directionX = 1, directionY = 0) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (!recipe || effects.length > 320) return;
+  const intensity = weaponVfxIntensity(weapon);
+  const angle = Math.atan2(directionY, directionX);
+  const life = (.18 + (recipe.timing === "linger" ? .1 : .03)) * Math.min(1.15, intensity);
+  effects.push({
+    type: "impact", x: enemy.x, y: enemy.y, angle,
+    radius: Math.max(13, (enemy.radius * .65 + (weapon.projectile_size || 5) * 1.3) * intensity),
+    color: weapon.color, secondaryColor: weapon.secondary_color || "#ffffff",
+    style: recipe.impact, recipe, life, maxLife: life,
+  });
+}
+
 function fireProjectile(weapon, damageScale = 1) {
   const target = weaponTarget(weapon, runtimeRange(weapon));
   if (!target) return false;
@@ -1608,6 +1652,7 @@ function fireProjectile(weapon, damageScale = 1) {
   player.moveY = Math.sin(baseAngle);
   const count = weaponMutation(weapon, "wall") ? Math.max(5, runtimeCount(weapon)) : runtimeCount(weapon);
   const spread = Math.max(weapon.spread_degrees, weaponMutation(weapon, "wall") ? 72 : 0) * Math.PI / 180;
+  emitWeaponCast(weapon, player.x + Math.cos(baseAngle) * 22, player.y + Math.sin(baseAngle) * 22, baseAngle, Math.min(1.5, .8 + count * .08));
   for (let index = 0; index < count; index += 1) {
     const ratio = count === 1 ? 0 : index / (count - 1) - 0.5;
     const angle = baseAngle + spread * ratio + (weapon.trajectory === "spiral" || weaponMutation(weapon, "spiral_dance") ? Math.sin(state.time * 4 + index) * .18 : 0);
@@ -1674,8 +1719,10 @@ function fireBeam(weapon, damageScale = 1) {
       width: weapon.projectile_size * (offset ? .68 : 1), color: weapon.color,
       life: 0.13, maxLife: 0.13,
       source: "weapon", form: inferVisualForm(weapon), style: beamStyleForWeapon(weapon), fork: offset !== 0,
+      weapon, recipe: weaponVfxRecipe(weapon), secondaryColor: weapon.secondary_color,
     });
   }
+  emitWeaponCast(weapon, player.x + Math.cos(baseAngle) * 24, player.y + Math.sin(baseAngle) * 24, baseAngle, 1.12);
   audio.shoot("beam");
   weapon.recoil = 1;
   return true;
@@ -1693,7 +1740,9 @@ function fireAura(weapon, damageScale = 1) {
   effects.push({
     type: "ring", x: player.x, y: player.y, radius: runtimeRange(weapon), color: weapon.color,
     life: 0.34, maxLife: 0.34, source: "weapon", form: inferVisualForm(weapon), style: ringStyleForWeapon(weapon),
+    weapon, recipe: weaponVfxRecipe(weapon), secondaryColor: weapon.secondary_color,
   });
+  emitWeaponCast(weapon, player.x, player.y, state.time, Math.min(1.8, runtimeRange(weapon) / 105));
   audio.shoot("aura");
   weapon.recoil = .45;
   return hit || enemies.length > 0;
@@ -1725,20 +1774,23 @@ function fireMelee(weapon, damageScale = 1) {
   }
   const slashLife = warriorSwing ? .38 : .26;
   const slashStyle = slashStyleForWeapon(weapon);
-  if (slashStyle === "daggers") {
+  if (inferVisualForm(weapon) === "daggers") {
     for (const offset of [-.18, .18]) {
       effects.push({
         type: "slash", x: player.x, y: player.y, angle: angle + offset, radius: range * .86,
         arc: Math.min(arc * .58, .72), color: weapon.color, life: .22, maxLife: .22,
-        heavy: false, source: "weapon", form: inferVisualForm(weapon), style: "daggers",
+        heavy: false, source: "weapon", form: inferVisualForm(weapon), style: slashStyle,
+        weapon, recipe: weaponVfxRecipe(weapon), secondaryColor: weapon.secondary_color,
       });
     }
   } else {
     effects.push({
       type: "slash", x: player.x, y: player.y, angle, radius: range * (warriorSwing ? 1.14 : 1), arc, color: weapon.color,
       life: slashLife, maxLife: slashLife, heavy: warriorSwing, source: "weapon", form: inferVisualForm(weapon), style: slashStyle,
+      weapon, recipe: weaponVfxRecipe(weapon), secondaryColor: weapon.secondary_color,
     });
   }
+  emitWeaponCast(weapon, player.x + Math.cos(angle) * 14, player.y + Math.sin(angle) * 14, angle, warriorSwing ? 1.45 : 1);
   if (warriorSwing) {
     effects.push({ type: "slash", x: player.x, y: player.y, angle: angle - .11, radius: range * .94, arc: arc * .86, color: selectedArchetype.accent_color, life: .3, maxLife: .3, heavy: true, source: "weapon", form: inferVisualForm(weapon), style: "cleave" });
     effects.push({ type: "ring", x: player.x + Math.cos(angle) * range * .48, y: player.y + Math.sin(angle) * range * .48, radius: range * .68, color: weapon.color, life: .24, maxLife: .24, source: "weapon", form: inferVisualForm(weapon), style: "impact" });
@@ -2269,6 +2321,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
     enemy.poisonSource = weapon;
   }
   if (canProc) {
+    emitWeaponImpact(enemy, weapon, directionX, directionY);
     executeEffectRules("on_hit", weapon, { enemy, baseDamage });
     applyMutationHitEffects(enemy, baseDamage, weapon);
   }
@@ -2851,6 +2904,7 @@ function updateParticles(dt) {
   particles = particles.filter((particle) => particle.life > 0);
   for (const effect of effects) effect.life -= dt;
   effects = effects.filter((effect) => effect.life > 0);
+  if (effects.length > 360) effects.splice(0, effects.length - 360);
 }
 
 function update(dt) {
@@ -3406,103 +3460,157 @@ function drawEnemyProjectiles() {
   ctx.restore();
 }
 
+function drawVfxTrail(recipe, r, color, secondary) {
+  const phase = state.time * 8;
+  const trail = recipe?.trail || "streak";
+  ctx.save();
+  ctx.globalAlpha = .58;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = secondary;
+  ctx.lineWidth = Math.max(1, r * .18);
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = color;
+  const dot = (x, y, size = .25) => { ctx.beginPath(); ctx.arc(x * r, y * r, r * size, 0, Math.PI * 2); ctx.fill(); };
+  if (["streak", "afterimage", "echo"].includes(trail)) {
+    for (let index = 0; index < (trail === "echo" ? 4 : 2); index += 1) {
+      ctx.globalAlpha = .46 - index * .08;
+      ctx.beginPath(); ctx.moveTo(-r * (1.4 + index * 1.25), index % 2 ? -r * .35 : r * .35); ctx.lineTo(-r * (5.5 + index), 0); ctx.stroke();
+    }
+  } else if (["ribbon", "braid", "spiral"].includes(trail)) {
+    const strands = trail === "braid" ? 2 : 1;
+    for (let strand = 0; strand < strands; strand += 1) {
+      ctx.beginPath();
+      for (let index = 0; index <= 10; index += 1) {
+        const x = -r * (.8 + index * .55);
+        const y = Math.sin(index * .9 + phase + strand * Math.PI) * r * (trail === "spiral" ? .9 : .55);
+        if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (["embers", "spores", "motes", "dust", "droplets"].includes(trail)) {
+    for (let index = 0; index < 6; index += 1) {
+      const y = Math.sin(phase + index * 2.1) * r * (trail === "droplets" ? 1 : .75);
+      dot(-1.2 - index * .72, y / r, trail === "spores" ? .34 : trail === "dust" ? .16 : .23);
+    }
+  } else if (["feathers", "shards", "petals", "scales"].includes(trail)) {
+    for (let index = 0; index < 4; index += 1) {
+      ctx.save(); ctx.translate(-r * (1.4 + index * 1.15), Math.sin(index + phase) * r * .55); ctx.rotate(index % 2 ? .55 : -.55);
+      ctx.beginPath(); ctx.moveTo(-r * .45, 0); ctx.lineTo(0, -r * .28); ctx.lineTo(r * .45, 0); ctx.lineTo(0, r * .28); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+  } else if (["rings", "bubbles", "glyphs", "constellation"].includes(trail)) {
+    let last = null;
+    for (let index = 0; index < 4; index += 1) {
+      const x = -r * (1.4 + index * 1.35); const y = Math.sin(index * 1.9 + phase) * r * .48;
+      ctx.beginPath();
+      if (trail === "glyphs") ctx.rect(x - r * .3, y - r * .3, r * .6, r * .6);
+      else ctx.arc(x, y, r * (.28 + index * .05), 0, Math.PI * 2);
+      ctx.stroke();
+      if (trail === "constellation" && last) { ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(x, y); ctx.stroke(); }
+      last = { x, y };
+    }
+  } else if (["zigzag", "lightning", "sparks"].includes(trail)) {
+    ctx.beginPath(); ctx.moveTo(-r, 0);
+    for (let index = 1; index <= 7; index += 1) ctx.lineTo(-r * (1 + index * .72), (index % 2 ? 1 : -1) * r * (trail === "lightning" ? .75 : .38));
+    ctx.stroke();
+  } else if (trail === "smoke" || trail === "void") {
+    ctx.fillStyle = trail === "void" ? "rgba(2,1,8,.72)" : `${secondary}66`;
+    for (let index = 0; index < 5; index += 1) dot(-1.3 - index * .85, Math.sin(index + phase) * .35, .5 + index * .06);
+  }
+  ctx.restore();
+}
+
+function drawVfxProjectile(recipe, form, r, color, secondary) {
+  const shape = recipe?.projectile || "needle";
+  const spin = state.time * (recipe?.timing === "accelerate" ? 10 : 5);
+  ctx.save();
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = color;
+  ctx.strokeStyle = "rgba(255,255,255,.86)";
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(1, r * .2);
+  if (shape === "needle") {
+    ctx.beginPath(); ctx.moveTo(r * 4.6, 0); ctx.lineTo(-r * 2.8, -r * .32); ctx.lineTo(-r * 3.8, 0); ctx.lineTo(-r * 2.8, r * .32); ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (shape === "broadhead") {
+    ctx.beginPath(); ctx.moveTo(r * 4.2, 0); ctx.lineTo(r * .7, -r * 1.25); ctx.lineTo(r * 1.3, 0); ctx.lineTo(r * .7, r * 1.25); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r * 1.2, 0); ctx.lineTo(-r * 3.6, 0); ctx.stroke();
+  } else if (shape === "crescent") {
+    ctx.lineWidth = r * .75; ctx.beginPath(); ctx.arc(0, 0, r * 2.7, -.72, .72); ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = r * 1.3; ctx.globalAlpha = .45; ctx.stroke();
+  } else if (["comet", "meteor"].includes(shape)) {
+    ctx.beginPath(); ctx.arc(r * .7, 0, r * (shape === "meteor" ? 1.45 : 1.05), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.8)"; polygon(r * 1.05, -r * .2, r * .5, shape === "meteor" ? 5 : 8, spin); ctx.fill();
+  } else if (["shard", "prism"].includes(shape)) {
+    ctx.beginPath(); ctx.moveTo(r * 3.3, 0); ctx.lineTo(-r * .4, -r * 1.35); ctx.lineTo(-r * 2.3, 0); ctx.lineTo(-r * .4, r * 1.35); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (shape === "prism") { ctx.strokeStyle = secondary; ctx.beginPath(); ctx.moveTo(-r * .4, -r * 1.35); ctx.lineTo(r * .7, 0); ctx.lineTo(-r * .4, r * 1.35); ctx.stroke(); }
+  } else if (shape === "orb" || shape === "singularity") {
+    ctx.fillStyle = shape === "singularity" ? "rgba(2,1,8,.9)" : color; ctx.beginPath(); ctx.arc(0, 0, r * 1.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = color; ctx.globalAlpha = .8; for (let ring = 0; ring < 2; ring += 1) { ctx.beginPath(); ctx.ellipse(0, 0, r * (1.8 + ring * .45), r * (.55 + ring * .2), spin * (ring ? -1 : 1), 0, Math.PI * 2); ctx.stroke(); }
+  } else if (shape === "helix") {
+    for (const side of [-1, 1]) { ctx.beginPath(); for (let index = -4; index <= 4; index += 1) { const x = index * r * .72; const y = Math.sin(index * 1.25 + spin + side) * r * .75 * side; if (index === -4) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
+  } else if (shape === "saw") {
+    ctx.save(); ctx.rotate(spin); for (let index = 0; index < 12; index += 1) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(r, -r * .35); ctx.lineTo(r * 2.1, 0); ctx.lineTo(r, r * .35); ctx.fill(); } ctx.restore();
+    ctx.fillStyle = secondary; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (["thorn", "fang"].includes(shape)) {
+    ctx.fillStyle = shape === "fang" ? "#f4f3e8" : color;
+    ctx.beginPath(); ctx.moveTo(r * 3.7, 0); ctx.quadraticCurveTo(r * .3, shape === "fang" ? -r * 2 : -r, -r * 2.5, r * .6); ctx.quadraticCurveTo(-r * .4, r * .2, r * 3.7, 0); ctx.fill(); ctx.stroke();
+  } else if (shape === "butterfly") {
+    ctx.fillStyle = `${color}cc`; for (const side of [-1, 1]) { ctx.beginPath(); ctx.ellipse(-r * .4, side * r * .72, r * 1.7, r * .72, side * .55, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = secondary; ctx.fillRect(-r * 1.2, -r * .16, r * 3, r * .32);
+  } else if (shape === "serpent") {
+    ctx.lineWidth = r * .75; ctx.beginPath(); for (let index = -4; index <= 4; index += 1) { const x = index * r * .75; const y = Math.sin(index * .9 + spin) * r * .7; if (index === -4) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke();
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(r * 3.1, Math.sin(4 * .9 + spin) * r * .7, r * .65, 0, Math.PI * 2); ctx.fill();
+  } else if (shape === "satellite") {
+    ctx.fillStyle = "#222936"; polygon(0, 0, r * 1.35, 6, spin); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color; ctx.fillRect(-r * 3.1, -r * .7, r * 1.6, r * 1.4); ctx.fillRect(r * 1.5, -r * .7, r * 1.6, r * 1.4);
+  } else if (shape === "rune") {
+    ctx.save(); ctx.rotate(spin * .5); ctx.strokeStyle = color; polygon(0, 0, r * 2, 4, Math.PI / 4); ctx.stroke(); ctx.rotate(Math.PI / 4); polygon(0, 0, r * 1.3, 4); ctx.stroke(); ctx.restore();
+  } else if (shape === "wave") {
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 3, side * r * .6); ctx.bezierCurveTo(-r, -side * r * 1.5, r, side * r * 1.5, r * 3.4, 0); ctx.stroke(); }
+  } else if (shape === "ring") {
+    ctx.lineWidth = r * .55; ctx.beginPath(); ctx.ellipse(0, 0, r * 2.4, r * 1.15, spin, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(r * 1.9, 0, r * .45, 0, Math.PI * 2); ctx.fill();
+  } else if (shape === "drill") {
+    ctx.beginPath(); ctx.moveTo(r * 4, 0); ctx.lineTo(-r * 2.6, -r * 1.3); ctx.lineTo(-r * 2.6, r * 1.3); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = secondary; for (let index = -1; index <= 2; index += 1) { ctx.beginPath(); ctx.moveTo(index * r * 1.25, -r); ctx.lineTo((index - .65) * r * 1.25, r); ctx.stroke(); }
+  } else if (shape === "star") {
+    ctx.save(); ctx.rotate(spin); ctx.beginPath(); for (let index = 0; index < 10; index += 1) { const angle = index / 10 * Math.PI * 2; const radius = r * (index % 2 ? .8 : 2.2); const x = Math.cos(angle) * radius; const y = Math.sin(angle) * radius; if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+  } else if (shape === "capsule") {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(-r * 2.4, -r, r * 4.8, r * 2, r); ctx.fill(); ctx.stroke(); ctx.fillStyle = secondary; ctx.fillRect(-r * .35, -r, r * .7, r * 2);
+  } else if (shape === "trident") {
+    ctx.beginPath(); ctx.moveTo(-r * 3.2, 0); ctx.lineTo(r * 3.4, 0); ctx.stroke();
+    for (const side of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(r * 1.2, side * r * .8); ctx.lineTo(r * 3.6, side * r * 1.15); ctx.lineTo(r * 2.6, side * r * 1.15 + (side || 1) * r * .5); ctx.closePath(); ctx.fill(); }
+  } else if (shape === "swarm") {
+    for (let index = 0; index < 6; index += 1) { const angle = spin + index / 6 * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(angle) * r * 1.8, Math.sin(angle) * r, r * .42, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  // Chassis accent keeps the same signature distinct on each weapon family.
+  ctx.strokeStyle = secondary; ctx.fillStyle = secondary; ctx.globalAlpha = .8; ctx.lineWidth = Math.max(1, r * .16);
+  if (form === "bow") { for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 2.2, 0); ctx.lineTo(-r * 3.4, side * r); ctx.lineTo(-r * 2.8, 0); ctx.fill(); } }
+  else if (form === "rifle") { ctx.fillRect(-r * 1.1, -r * .18, r * 2.1, r * .36); }
+  else if (form === "cannon") { ctx.beginPath(); ctx.arc(-r * 1.3, 0, r * 1.45, 0, Math.PI * 2); ctx.stroke(); }
+  else if (form === "blade") { ctx.beginPath(); ctx.moveTo(-r * 1.5, -r); ctx.lineTo(r * 2.4, 0); ctx.lineTo(-r * 1.5, r); ctx.stroke(); }
+  else if (form === "daggers") { for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 2.4, side * r * .65); ctx.lineTo(r * 2.2, side * r * .65); ctx.stroke(); } }
+  else if (form === "staff") { ctx.beginPath(); ctx.arc(0, 0, r * 2.5, 0, Math.PI * 2); ctx.stroke(); }
+  else if (form === "orb") { for (let index = 0; index < 3; index += 1) { const angle = spin + index / 3 * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(angle) * r * 2.3, Math.sin(angle) * r * 1.1, r * .22, 0, Math.PI * 2); ctx.fill(); } }
+  else if (form === "tome") { ctx.save(); ctx.rotate(Math.PI / 4); ctx.strokeRect(-r * 1.5, -r * 1.5, r * 3, r * 3); ctx.restore(); }
+  else if (form === "drone") { for (const side of [-1, 1]) ctx.fillRect(side * r * 2.1 - r * .45, -r * .55, r * .9, r * 1.1); }
+  ctx.restore();
+}
+
 function drawProjectileBody(projectile) {
-  const form = inferVisualForm(projectile.weapon || {});
+  const weapon = projectile.weapon || {};
+  const form = inferVisualForm(weapon);
+  const recipe = weaponVfxRecipe(weapon);
   const r = Math.max(3, projectile.radius);
   const color = projectile.color || "#f1f0eb";
-  const secondary = projectile.weapon?.secondary_color || "#f1f0eb";
-  const variant = Math.max(0, Math.min(11, Number(projectile.weapon?.visual_variant) || 0));
-  ctx.shadowBlur = 14;
-  ctx.shadowColor = color;
-  ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(255,255,255,.82)";
-  ctx.lineWidth = Math.max(1, r * .22);
-
-  if (form === "bow") {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1.3, r * .35);
-    ctx.beginPath(); ctx.moveTo(-r * 4.2, 0); ctx.lineTo(r * 3.4, 0); ctx.stroke();
-    ctx.fillStyle = "#f5f8ff";
-    ctx.beginPath(); ctx.moveTo(r * 4.1, 0); ctx.lineTo(r * 2.2, -r * .9); ctx.lineTo(r * 2.6, 0); ctx.lineTo(r * 2.2, r * .9); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = color;
-    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * 2.2, 0); ctx.lineTo(-r * 3.5, side * r * .9); ctx.lineTo(-r * 2.8, 0); ctx.closePath(); ctx.fill(); }
-  } else if (form === "cannon") {
-    const trail = ctx.createLinearGradient(-r * 6, 0, r * 2, 0);
-    trail.addColorStop(0, `${color}00`);
-    trail.addColorStop(.5, `${color}33`);
-    trail.addColorStop(1, `${color}bb`);
-    ctx.fillStyle = trail;
-    ctx.fillRect(-r * 6, -r * .45, r * 6, r * .9);
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.ellipse(r * .4, 0, r * 1.35, r, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,.8)";
-    ctx.beginPath(); ctx.arc(r * .85, -r * .22, r * .28, 0, Math.PI * 2); ctx.fill();
-  } else if (["staff", "orb", "tome"].includes(form)) {
-    ctx.save();
-    ctx.rotate(state.time * 5 + projectile.x * .002);
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = .75;
-    polygon(0, 0, r * 1.6, form === "tome" ? 4 : 6, Math.PI / 4);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = form === "orb" ? `${color}cc` : "#eef8ff";
-    polygon(0, 0, r * .9, 4, Math.PI / 4);
-    ctx.fill();
-    ctx.restore();
-    ctx.globalAlpha = .35;
-    ctx.fillRect(-r * 4.8, -1, r * 4.4, 2);
-    ctx.globalAlpha = 1;
-  } else if (["blade", "daggers"].includes(form)) {
-    ctx.fillStyle = "#edf3fb";
-    ctx.beginPath();
-    ctx.moveTo(r * 3.2, 0);
-    ctx.lineTo(-r * 1.5, -r * .9);
-    ctx.lineTo(-r * .4, 0);
-    ctx.lineTo(-r * 1.5, r * .9);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1, r * .25);
-    ctx.beginPath(); ctx.moveTo(-r * 1.2, 0); ctx.lineTo(r * 2.5, 0); ctx.stroke();
-    ctx.globalAlpha = .32;
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.ellipse(-r * 2.3, 0, r * 2.4, r * .36, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-  } else if (form === "drone") {
-    ctx.fillStyle = "#222936";
-    polygon(0, 0, r * 1.5, 4, Math.PI / 4);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = color;
-    ctx.fillRect(-r * 2.8, -r * .2, r * 1.4, r * .4);
-    ctx.fillRect(r * 1.4, -r * .2, r * 1.4, r * .4);
-    ctx.beginPath(); ctx.arc(0, 0, r * .42, 0, Math.PI * 2); ctx.fill();
-  } else {
-    ctx.fillStyle = color;
-    ctx.fillRect(-r * 1.7, -r * .5, r * 3.5, r);
-    ctx.fillStyle = "#f6f8ff";
-    ctx.fillRect(r * .9, -r * .32, r * 1.2, r * .64);
-    ctx.globalAlpha = .35;
-    ctx.fillStyle = color;
-    ctx.fillRect(-r * 5.2, -1, r * 4.6, 2);
-    ctx.globalAlpha = 1;
-  }
+  const secondary = weapon.secondary_color || "#f1f0eb";
+  drawVfxTrail(recipe, r, color, secondary);
+  drawVfxProjectile(recipe, form, r, color, secondary);
   ctx.save();
-  ctx.strokeStyle = secondary; ctx.fillStyle = secondary; ctx.lineWidth = Math.max(1, r * .16); ctx.globalAlpha = .78;
-  if (variant % 4 === 0) {
-    ctx.beginPath(); ctx.ellipse(0, 0, r * 2.1, r * .82, state.time * 2, 0, Math.PI * 2); ctx.stroke();
-  } else if (variant % 4 === 1) {
-    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-r * .6, 0); ctx.lineTo(-r * 2.2, side * r); ctx.lineTo(r * .2, side * r * .42); ctx.closePath(); ctx.fill(); }
-  } else if (variant % 4 === 2) {
-    for (let index = 0; index < 3; index += 1) { const angle = state.time * 6 + index / 3 * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(angle) * r * 1.7, Math.sin(angle) * r * .8, r * .23, 0, Math.PI * 2); ctx.fill(); }
-  } else {
-    ctx.beginPath(); for (let index = -2; index <= 2; index += 1) ctx.lineTo(index * r * .8, (index % 2 ? -1 : 1) * r * .75); ctx.stroke();
+  if ((weapon.burn_damage || 0) + bonuses.burn > 0) {
+    ctx.strokeStyle = "#ff7a38"; ctx.lineWidth = Math.max(1, r * .2); ctx.beginPath(); ctx.moveTo(-r, 0); ctx.quadraticCurveTo(-r * 3, -r, -r * 5, Math.sin(state.time * 16) * r); ctx.stroke();
   }
-  if ((projectile.weapon?.burn_damage || 0) + bonuses.burn > 0) {
-    ctx.strokeStyle = "#ff7a38"; ctx.beginPath(); ctx.moveTo(-r * 1.2, 0); ctx.quadraticCurveTo(-r * 3, -r, -r * 5, Math.sin(state.time * 16) * r); ctx.stroke();
-  }
-  if ((projectile.weapon?.poison_damage || 0) + bonuses.poison > 0) {
+  if ((weapon.poison_damage || 0) + bonuses.poison > 0) {
     ctx.fillStyle = "#67e86f"; for (let index = 0; index < 3; index += 1) { ctx.beginPath(); ctx.arc(-r * (1.5 + index * 1.2), Math.sin(state.time * 9 + index) * r * .7, r * .22, 0, Math.PI * 2); ctx.fill(); }
   }
   ctx.restore();
@@ -3526,7 +3634,7 @@ function drawWeaponModel(renderCtx, weapon, x, y, angle = 0, scale = 1, alpha = 
   const form = inferVisualForm(weapon);
   const color = weapon.color || "#f1f0eb";
   const secondary = weapon.secondary_color || "#18213a";
-  const variant = Math.max(0, Math.min(11, Number(weapon.visual_variant) || 0));
+  const variant = Math.max(0, Math.min(23, Number(weapon.visual_variant) || 0));
   renderCtx.save();
   renderCtx.translate(x, y);
   renderCtx.rotate(angle);
@@ -3626,9 +3734,10 @@ function drawWeaponModel(renderCtx, weapon, x, y, angle = 0, scale = 1, alpha = 
     renderCtx.fillStyle = "white"; renderCtx.beginPath(); renderCtx.arc(12, -1, 2, 0, Math.PI * 2); renderCtx.fill();
   }
 
-  // Twelve modular structure genes across nine chassis produce 108 readable
-  // physical families. They alter silhouette, not merely color.
-  const gene = variant % 6;
+  // Twenty-four visual signatures across nine chassis produce 216 readable
+  // physical/VFX families. Every signature changes silhouette and motion.
+  const gene = variant % 12;
+  const tier = Math.floor(variant / 12);
   const compact = ["orb", "tome", "drone"].includes(form);
   const anchor = compact ? 0 : 7;
   renderCtx.strokeStyle = secondary; renderCtx.fillStyle = secondary; renderCtx.lineWidth = 2;
@@ -3644,13 +3753,52 @@ function drawWeaponModel(renderCtx, weapon, x, y, angle = 0, scale = 1, alpha = 
     renderCtx.fillStyle = color; for (const px of [-12, 8, 27]) { renderCtx.beginPath(); renderCtx.arc(px, px === 8 ? 3 : -4, 2.5, 0, Math.PI * 2); renderCtx.fill(); }
   } else if (gene === 4) {
     for (let index = -1; index <= 1; index += 1) { const px = index * 13; renderCtx.beginPath(); renderCtx.moveTo(px - 5, -6); renderCtx.lineTo(px, -16 - Math.abs(index) * 3); renderCtx.lineTo(px + 5, -6); renderCtx.closePath(); renderCtx.fill(); }
-  } else {
-    renderCtx.fillStyle = color; polygonWithContext(renderCtx, anchor + 5, 0, compact ? 10 : 7, variant >= 6 ? 5 : 4, Math.PI / 4); renderCtx.fill(); renderCtx.stroke();
+  } else if (gene === 5) {
+    renderCtx.fillStyle = color; polygonWithContext(renderCtx, anchor + 5, 0, compact ? 10 : 7, 4, Math.PI / 4); renderCtx.fill(); renderCtx.stroke();
     renderCtx.strokeStyle = secondary; renderCtx.beginPath(); renderCtx.moveTo(-20, 0); renderCtx.lineTo(anchor - 5, 0); renderCtx.stroke();
+  } else if (gene === 6) {
+    renderCtx.lineWidth = 3;
+    for (let index = -2; index <= 2; index += 1) {
+      const px = anchor + index * 7;
+      renderCtx.strokeStyle = index % 2 ? color : secondary;
+      renderCtx.beginPath(); renderCtx.arc(px, 0, compact ? 7 : 5, -.9, .9); renderCtx.stroke();
+    }
+  } else if (gene === 7) {
+    renderCtx.fillStyle = secondary;
+    renderCtx.beginPath(); renderCtx.moveTo(-18, -4); renderCtx.lineTo(17, -18); renderCtx.lineTo(7, -3); renderCtx.lineTo(31, 0); renderCtx.lineTo(7, 3); renderCtx.lineTo(17, 18); renderCtx.lineTo(-18, 4); renderCtx.closePath(); renderCtx.fill(); renderCtx.stroke();
+  } else if (gene === 8) {
+    renderCtx.strokeStyle = color; renderCtx.lineWidth = 2.4;
+    for (let index = 0; index < 3; index += 1) {
+      renderCtx.beginPath(); renderCtx.ellipse(anchor + index * 7 - 7, 0, 9 + index * 2, 5 + index, index * .25, 0, Math.PI * 2); renderCtx.stroke();
+    }
+  } else if (gene === 9) {
+    renderCtx.strokeStyle = secondary; renderCtx.lineWidth = 2.6;
+    for (const side of [-1, 1]) {
+      renderCtx.beginPath(); renderCtx.moveTo(-20, side * 3); renderCtx.bezierCurveTo(-6, side * 19, 10, side * -15, 32, side * 8); renderCtx.stroke();
+      renderCtx.fillStyle = color; renderCtx.beginPath(); renderCtx.arc(32, side * 8, 3.5, 0, Math.PI * 2); renderCtx.fill();
+    }
+  } else if (gene === 10) {
+    renderCtx.strokeStyle = secondary; renderCtx.lineWidth = 2;
+    renderCtx.beginPath(); renderCtx.arc(anchor, 0, compact ? 18 : 11, -.7, .7); renderCtx.stroke();
+    renderCtx.beginPath(); renderCtx.moveTo(anchor + 8, -9); renderCtx.lineTo(anchor + 20, -17); renderCtx.lineTo(anchor + 24, -12); renderCtx.stroke();
+    renderCtx.fillStyle = color; renderCtx.beginPath(); renderCtx.arc(anchor + 24, -12, 3, 0, Math.PI * 2); renderCtx.fill();
+  } else {
+    renderCtx.strokeStyle = secondary; renderCtx.lineWidth = 2;
+    for (const side of [-1, 1]) {
+      renderCtx.beginPath(); renderCtx.moveTo(-15, side * 4); renderCtx.lineTo(anchor, side * 14); renderCtx.lineTo(28, side * 5); renderCtx.stroke();
+    }
+    renderCtx.fillStyle = color; polygonWithContext(renderCtx, anchor, 0, compact ? 12 : 8, 6, state.time * .35); renderCtx.fill(); renderCtx.stroke();
   }
-  if (variant >= 6) {
-    renderCtx.strokeStyle = color; renderCtx.globalAlpha *= .75; renderCtx.setLineDash([3, 3]);
-    renderCtx.beginPath(); renderCtx.ellipse(anchor, 0, compact ? 25 : 17, compact ? 12 : 9, 0, 0, Math.PI * 2); renderCtx.stroke(); renderCtx.setLineDash([]);
+  if (tier >= 1) {
+    renderCtx.strokeStyle = color; renderCtx.globalAlpha *= .72; renderCtx.lineWidth = 1.5;
+    const spin = state.time * 1.8 + variant;
+    for (let index = 0; index < 3; index += 1) {
+      const orbit = spin + index / 3 * Math.PI * 2;
+      const ox = anchor + Math.cos(orbit) * (compact ? 24 : 17);
+      const oy = Math.sin(orbit) * (compact ? 13 : 9);
+      renderCtx.beginPath(); renderCtx.arc(ox, oy, 2.5, 0, Math.PI * 2); renderCtx.fill();
+      renderCtx.beginPath(); renderCtx.moveTo(anchor, 0); renderCtx.lineTo(ox, oy); renderCtx.stroke();
+    }
   }
   renderCtx.restore();
 }
@@ -3698,6 +3846,34 @@ function drawEquippedWeapons() {
   if (held[0]) drawWeaponModel(ctx, held[0], width / 2 + player.moveX * 15, height / 2 + player.moveY * 15, facing, .92, 1);
 }
 
+function drawOrbitAttachment(point, weapon, angle) {
+  const recipe = weaponVfxRecipe(weapon);
+  if (!recipe) return;
+  const color = weapon.color || "#f1f0eb";
+  const secondary = weapon.secondary_color || "#ffffff";
+  const size = Math.max(7, weapon.projectile_size * bonuses.area * .8);
+  ctx.save(); ctx.translate(point.x, point.y); ctx.rotate(angle); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 13; ctx.lineWidth = 1.6;
+  const motif = recipe.attachment;
+  if (["dart", "wing", "arc", "fin", "fork"].includes(motif)) {
+    const wings = motif === "fork" ? 3 : 2;
+    for (let index = 0; index < wings; index += 1) { const offset = (index - (wings - 1) / 2) * size * .6; ctx.beginPath(); ctx.moveTo(-size, offset); ctx.lineTo(0, offset * .2); ctx.lineTo(-size * .25, offset + (index % 2 ? size : -size)); ctx.stroke(); }
+  } else if (["facet", "pod", "tooth", "barb", "ray", "jaw"].includes(motif)) {
+    polygonWithContext(ctx, 0, 0, size, motif === "facet" ? 4 : motif === "ray" ? 5 : 3, state.time * 1.5); ctx.fill();
+    ctx.fillStyle = secondary; ctx.beginPath(); ctx.arc(0, 0, size * .28, 0, Math.PI * 2); ctx.fill();
+  } else if (["dish", "crown", "lens", "eye"].includes(motif)) {
+    ctx.beginPath(); ctx.ellipse(0, 0, size * 1.25, size * .55, state.time, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = motif === "eye" ? "#080510" : secondary; ctx.beginPath(); ctx.arc(0, 0, size * .46, 0, Math.PI * 2); ctx.fill();
+  } else if (["double", "auger", "magazine"].includes(motif)) {
+    for (const side of [-1, 1]) { ctx.strokeStyle = side > 0 ? color : secondary; ctx.beginPath(); ctx.ellipse(0, side * size * .45, size * 1.2, size * .36, side * state.time, 0, Math.PI * 2); ctx.stroke(); }
+  } else if (["antenna", "fang", "script", "crest", "hive"].includes(motif)) {
+    const count = motif === "hive" ? 6 : 4;
+    for (let index = 0; index < count; index += 1) { const a = index / count * Math.PI * 2 + state.time; const rr = size * 1.25; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); ctx.stroke(); ctx.fillStyle = index % 2 ? secondary : color; ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, 2.2, 0, Math.PI * 2); ctx.fill(); }
+  } else {
+    ctx.beginPath(); ctx.arc(0, 0, size, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawOrbitals() {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -3705,14 +3881,142 @@ function drawOrbitals() {
     if (weapon.delivery !== "orbit" || !weapon.orbitPositions) continue;
     for (const orb of weapon.orbitPositions) {
       const point = worldToScreen(orb.x, orb.y);
+      drawOrbitAttachment(point, weapon, orb.angle + Math.PI / 2);
       drawWeaponModel(ctx, weapon, point.x, point.y, orb.angle + Math.PI / 2, Math.max(.28, weapon.projectile_size / 26) * bonuses.area, 1);
     }
   }
   ctx.restore();
 }
 
+function drawCastEffect(effect, point, alpha) {
+  const progress = 1 - alpha;
+  const radius = effect.radius * (.58 + progress * .62);
+  const color = effect.color || "#f1f0eb";
+  const secondary = effect.secondaryColor || "#ffffff";
+  const style = effect.style || "snap";
+  ctx.translate(point.x, point.y);
+  ctx.rotate(effect.angle || 0);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.shadowColor = color;
+  ctx.shadowBlur = 16; ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(1, 2.5 * alpha);
+
+  if (["snap", "draw", "eject", "fork"].includes(style)) {
+    const forks = style === "fork" ? 3 : style === "draw" ? 2 : 1;
+    for (let index = 0; index < forks; index += 1) {
+      const offset = (index - (forks - 1) / 2) * radius * .34;
+      ctx.beginPath(); ctx.moveTo(-radius * .8, offset); ctx.lineTo(radius * .8, offset * .3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(radius * .8, offset * .3); ctx.lineTo(radius * .4, offset * .3 - 4); ctx.lineTo(radius * .4, offset * .3 + 4); ctx.closePath(); ctx.fill();
+    }
+    if (style === "eject") { ctx.fillStyle = secondary; ctx.fillRect(-radius * .3, -radius * .55, radius * .38, radius * .17); }
+  } else if (["sweep", "surge", "open", "refract"].includes(style)) {
+    const layers = style === "refract" ? 3 : 2;
+    for (let index = 0; index < layers; index += 1) {
+      ctx.strokeStyle = index === 1 ? secondary : color;
+      ctx.beginPath(); ctx.arc(0, 0, radius * (.48 + index * .23), -.9 - progress, .9 + progress); ctx.stroke();
+    }
+    if (style === "surge") { ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.quadraticCurveTo(0, -radius * .6, radius, 0); ctx.stroke(); }
+  } else if (["charge", "pulse", "coil", "deploy", "collapse"].includes(style)) {
+    const rings = style === "coil" ? 3 : 2;
+    for (let index = 0; index < rings; index += 1) {
+      ctx.beginPath(); ctx.ellipse(0, 0, radius * (.35 + index * .27), radius * (.2 + index * .16), state.time * (index % 2 ? -1 : 1), 0, Math.PI * 2); ctx.stroke();
+    }
+    if (style === "collapse") { ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "rgba(2,1,9,.72)"; ctx.beginPath(); ctx.arc(0, 0, radius * .28 * alpha, 0, Math.PI * 2); ctx.fill(); }
+    if (style === "deploy") { for (const side of [-1, 1]) { ctx.fillStyle = secondary; ctx.fillRect(side * radius * .48 - 3, -3, 6, 6); } }
+  } else if (["fracture", "sprout", "flutter", "hatch"].includes(style)) {
+    const count = style === "hatch" ? 7 : style === "flutter" ? 4 : 5;
+    for (let index = 0; index < count; index += 1) {
+      const angle = -1.1 + index / Math.max(1, count - 1) * 2.2;
+      const length = radius * (.45 + (index % 3) * .18);
+      ctx.save(); ctx.rotate(angle);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length, 0); ctx.stroke();
+      if (style === "fracture") { ctx.fillStyle = secondary; polygonWithContext(ctx, length, 0, 3.5, 4, Math.PI / 4); ctx.fill(); }
+      else { ctx.beginPath(); ctx.ellipse(length, 0, style === "flutter" ? 5 : 3, style === "flutter" ? 2.3 : 4.5, angle, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+  } else if (["rev", "bore", "descend"].includes(style)) {
+    const teeth = style === "rev" ? 10 : 7;
+    for (let index = 0; index < teeth; index += 1) {
+      const angle = index / teeth * Math.PI * 2 + state.time * 3;
+      ctx.save(); ctx.rotate(angle); ctx.fillRect(radius * .45, -2, radius * .32, 4); ctx.restore();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, radius * .45, 0, Math.PI * 2); ctx.stroke();
+    if (style === "descend") { ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(0, radius); ctx.stroke(); }
+  } else if (["inscribe", "flare"].includes(style)) {
+    const sides = style === "flare" ? 8 : 6;
+    polygonWithContext(ctx, 0, 0, radius * .72, sides, state.time * .7); ctx.stroke();
+    polygonWithContext(ctx, 0, 0, radius * .35, style === "flare" ? 4 : 3, -state.time); ctx.stroke();
+  } else if (["hiss", "bite"].includes(style)) {
+    for (const side of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(-radius * .7, side * radius * .2); ctx.bezierCurveTo(-radius * .2, side * radius, radius * .25, side * -radius * .65, radius * .8, side * radius * .1); ctx.stroke();
+    }
+    if (style === "bite") { ctx.fillStyle = secondary; ctx.beginPath(); ctx.moveTo(radius * .55, -6); ctx.lineTo(radius, 0); ctx.lineTo(radius * .55, 6); ctx.closePath(); ctx.fill(); }
+  } else {
+    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawImpactEffect(effect, point, alpha) {
+  const progress = 1 - alpha;
+  const radius = effect.radius * (.55 + progress * .75);
+  const style = effect.style || "pin";
+  const color = effect.color || "#f1f0eb";
+  const secondary = effect.secondaryColor || "#ffffff";
+  ctx.translate(point.x, point.y); ctx.rotate(effect.angle || 0);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 22;
+  ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(1, 3 * alpha); ctx.lineCap = "round";
+
+  if (["pin", "cross", "pillar", "casing"].includes(style)) {
+    ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
+    if (style !== "pin") { ctx.beginPath(); ctx.moveTo(0, -radius * .7); ctx.lineTo(0, radius * .7); ctx.stroke(); }
+    if (style === "casing") { ctx.fillStyle = secondary; ctx.fillRect(-radius * .2, -radius * .72, radius * .45, radius * .2); }
+  } else if (["mooncut", "splash", "halo"].includes(style)) {
+    ctx.beginPath(); ctx.arc(0, 0, radius, style === "splash" ? Math.PI : -.9, style === "splash" ? Math.PI * 2 : .9); ctx.stroke();
+    ctx.strokeStyle = secondary; ctx.globalAlpha = alpha * .7; ctx.beginPath(); ctx.arc(0, 0, radius * .65, -.65, .65); ctx.stroke();
+  } else if (["crater", "satellite", "glyph", "implode"].includes(style)) {
+    if (style === "implode") { ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "rgba(1,0,8,.82)"; ctx.beginPath(); ctx.arc(0, 0, radius * .62, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = "lighter"; }
+    ctx.beginPath(); ctx.ellipse(0, 0, radius, radius * .45, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, radius * .28, 0, Math.PI * 2); ctx.stroke();
+    if (style === "glyph") { polygonWithContext(ctx, 0, 0, radius * .7, 6, state.time); ctx.stroke(); }
+    if (style === "satellite") { ctx.fillStyle = secondary; ctx.beginPath(); ctx.arc(radius * .72, 0, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  } else if (["shatter", "thornburst", "starburst", "trident"].includes(style)) {
+    const count = style === "trident" ? 3 : style === "thornburst" ? 7 : 9;
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index - (count - 1) / 2) * (style === "trident" ? .34 : Math.PI * 2 / count);
+      ctx.save(); ctx.rotate(angle);
+      ctx.beginPath(); ctx.moveTo(radius * .18, 0); ctx.lineTo(radius, 0); ctx.stroke();
+      ctx.fillStyle = index % 2 ? secondary : color;
+      ctx.beginPath(); ctx.moveTo(radius, 0); ctx.lineTo(radius * .62, -3); ctx.lineTo(radius * .62, 3); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  } else if (["bloom", "wingburst", "swarm"].includes(style)) {
+    const count = style === "swarm" ? 10 : 6;
+    for (let index = 0; index < count; index += 1) {
+      const angle = index / count * Math.PI * 2 + progress;
+      const distance = radius * (.35 + (index % 3) * .2);
+      ctx.save(); ctx.rotate(angle); ctx.translate(distance, 0);
+      ctx.beginPath(); ctx.ellipse(0, 0, style === "wingburst" ? 7 : 3.5, style === "wingburst" ? 3 : 5, angle, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+  } else if (["coil", "sawburst", "bore"].includes(style)) {
+    const turns = style === "sawburst" ? 12 : 18;
+    ctx.beginPath();
+    for (let index = 0; index <= turns; index += 1) {
+      const t = index / turns; const angle = t * Math.PI * (style === "coil" ? 3 : 2);
+      const rr = radius * t;
+      const x = Math.cos(angle) * rr; const y = Math.sin(angle) * rr * (style === "bore" ? .35 : 1);
+      if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  } else if (["bite", "fang"].includes(style)) {
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-radius * .45, side * radius * .6); ctx.lineTo(radius * .2, side * radius * .12); ctx.lineTo(radius * .75, side * radius * .48); ctx.stroke(); }
+  } else if (style === "refraction") {
+    for (let index = -1; index <= 1; index += 1) { ctx.strokeStyle = index ? color : secondary; ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(0, 0); ctx.lineTo(radius, index * radius * .55); ctx.stroke(); }
+  } else {
+    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
 function drawBeamEffect(effect, start, end, alpha) {
   const color = effect.color || "#f1f0eb";
+  const secondary = effect.secondaryColor || effect.weapon?.secondary_color || "#ffffff";
   const beamWidth = Math.max(1, Number(effect.width) || 3);
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -3806,6 +4110,87 @@ function drawBeamEffect(effect, start, end, alpha) {
     return;
   }
 
+  if (["helix", "braid", "tidal", "wave", "petals", "spores"].includes(style)) {
+    const strands = style === "helix" || style === "braid" ? 2 : 1;
+    const amplitude = style === "tidal" ? 13 : style === "wave" ? 9 : 6;
+    for (let strand = 0; strand < strands; strand += 1) {
+      ctx.strokeStyle = strand ? secondary : color;
+      ctx.globalAlpha = alpha * (strand ? .58 : .9);
+      ctx.lineWidth = Math.max(1, beamWidth * (style === "tidal" ? 1.2 : .65));
+      ctx.beginPath();
+      for (let index = 0; index <= 18; index += 1) {
+        const t = index / 18;
+        const phase = t * Math.PI * (style === "braid" ? 6 : style === "helix" ? 4 : 2.5) + state.time * 8 + strand * Math.PI;
+        const wave = Math.sin(phase) * amplitude * Math.sin(t * Math.PI);
+        const x = start.x + dx * t + nx * wave; const y = start.y + dy * t + ny * wave;
+        if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    const motifCount = style === "spores" ? 11 : style === "petals" ? 7 : 0;
+    ctx.fillStyle = style === "spores" ? secondary : color;
+    for (let index = 1; index <= motifCount; index += 1) {
+      const t = index / (motifCount + 1); const offset = Math.sin(index * 4.1 + state.time * 7) * amplitude;
+      ctx.beginPath(); ctx.ellipse(start.x + dx * t + nx * offset, start.y + dy * t + ny * offset, style === "petals" ? 6 : 2.5, style === "petals" ? 2.4 : 2.5, Math.atan2(dy, dx) + t * 3, 0, Math.PI * 2); ctx.fill();
+    }
+    return;
+  }
+
+  if (["segmented", "orbit", "runes", "saw", "drill", "constellation", "capsule"].includes(style)) {
+    const count = Math.max(4, Math.min(16, Math.round(length / (style === "capsule" ? 34 : 45))));
+    ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, beamWidth * .45);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    for (let index = 1; index <= count; index += 1) {
+      const t = index / (count + 1); const x = start.x + dx * t; const y = start.y + dy * t;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx) + (style === "orbit" ? state.time * 3 + index : 0));
+      if (style === "runes") { ctx.strokeStyle = index % 2 ? secondary : color; polygonWithContext(ctx, 0, 0, Math.max(4, beamWidth * 1.15), 4 + index % 3, Math.PI / 4); ctx.stroke(); }
+      else if (style === "saw") { ctx.fillStyle = index % 2 ? secondary : color; polygonWithContext(ctx, 0, 0, Math.max(5, beamWidth * 1.35), 8, state.time * 5 * (index % 2 ? -1 : 1)); ctx.fill(); ctx.fillStyle = "#11131b"; ctx.beginPath(); ctx.arc(0, 0, Math.max(2, beamWidth * .45), 0, Math.PI * 2); ctx.fill(); }
+      else if (style === "drill") { ctx.strokeStyle = index % 2 ? secondary : color; ctx.beginPath(); ctx.ellipse(0, 0, Math.max(3, beamWidth * .8), Math.max(7, beamWidth * 1.8), Math.PI / 2, 0, Math.PI * 2); ctx.stroke(); }
+      else if (style === "constellation") { ctx.fillStyle = index % 3 ? color : secondary; polygonWithContext(ctx, 0, 0, Math.max(3, beamWidth), 5, -Math.PI / 2); ctx.fill(); }
+      else if (style === "capsule") { ctx.fillStyle = index % 2 ? secondary : color; ctx.beginPath(); ctx.roundRect(-10, -Math.max(2, beamWidth * .55), 20, Math.max(4, beamWidth * 1.1), 4); ctx.fill(); }
+      else if (style === "orbit") { ctx.strokeStyle = color; ctx.beginPath(); ctx.ellipse(0, 0, Math.max(7, beamWidth * 1.6), Math.max(3, beamWidth * .65), 0, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = secondary; ctx.beginPath(); ctx.arc(Math.max(7, beamWidth * 1.6), 0, 2.5, 0, Math.PI * 2); ctx.fill(); }
+      else { ctx.fillRect(-5, -Math.max(2, beamWidth * .55), 10, Math.max(4, beamWidth * 1.1)); }
+      ctx.restore();
+    }
+    return;
+  }
+
+  if (style === "rail") {
+    ctx.globalAlpha = alpha * .28; ctx.lineWidth = Math.max(8, beamWidth * 3.4); ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(1.4, beamWidth * .42); ctx.strokeStyle = secondary;
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(start.x + nx * beamWidth * side, start.y + ny * beamWidth * side); ctx.lineTo(end.x + nx * beamWidth * side, end.y + ny * beamWidth * side); ctx.stroke(); }
+    return;
+  }
+
+  if (style === "prism") {
+    const prismColors = [color, secondary, "#ffffff"];
+    for (let index = -1; index <= 1; index += 1) {
+      ctx.strokeStyle = prismColors[index + 1]; ctx.globalAlpha = alpha * (index ? .6 : .95); ctx.lineWidth = Math.max(1, beamWidth * .55);
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x + nx * index * beamWidth * 3.2, end.y + ny * index * beamWidth * 3.2); ctx.stroke();
+    }
+    return;
+  }
+
+  if (style === "crescent") {
+    ctx.strokeStyle = color; ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(2, beamWidth);
+    const count = Math.max(3, Math.round(length / 68));
+    for (let index = 1; index <= count; index += 1) {
+      const t = index / (count + 1); const x = start.x + dx * t; const y = start.y + dy * t;
+      ctx.beginPath(); ctx.arc(x, y, Math.max(9, beamWidth * 2), Math.atan2(dy, dx) + 1.8, Math.atan2(dy, dx) + 4.5); ctx.stroke();
+    }
+    return;
+  }
+
+  if (style === "singularity") {
+    ctx.globalCompositeOperation = "source-over"; ctx.strokeStyle = "rgba(2,1,9,.9)"; ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(8, beamWidth * 2.8);
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, beamWidth * .65);
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(start.x + nx * side * beamWidth * 1.4, start.y + ny * side * beamWidth * 1.4); ctx.lineTo(end.x + nx * side * beamWidth * 1.4, end.y + ny * side * beamWidth * 1.4); ctx.stroke(); }
+    return;
+  }
+
   ctx.globalAlpha = alpha;
   ctx.shadowBlur = 18;
   ctx.lineWidth = Math.max(1, beamWidth * alpha);
@@ -3870,6 +4255,59 @@ function drawRingEffect(effect, point, alpha) {
     return;
   }
 
+  if (["reticle", "shockwave", "crater"].includes(style)) {
+    const rings = style === "shockwave" ? 3 : 2;
+    for (let layer = 0; layer < rings; layer += 1) {
+      ctx.globalAlpha = alpha * (1 - layer * .22); ctx.lineWidth = Math.max(1, 3 - layer * .65);
+      ctx.beginPath(); ctx.arc(point.x, point.y, radius * (.62 + layer * .19), 0, Math.PI * 2); ctx.stroke();
+    }
+    const marks = style === "reticle" ? 4 : style === "crater" ? 7 : 12;
+    for (let index = 0; index < marks; index += 1) {
+      const angle = index / marks * Math.PI * 2 + (style === "crater" ? Math.sin(index * 8.3) * .15 : 0);
+      const inner = radius * (style === "reticle" ? .72 : .54);
+      const outer = radius * (style === "crater" ? .96 + (index % 3) * .08 : 1.04);
+      ctx.beginPath(); ctx.moveTo(point.x + Math.cos(angle) * inner, point.y + Math.sin(angle) * inner); ctx.lineTo(point.x + Math.cos(angle) * outer, point.y + Math.sin(angle) * outer); ctx.stroke();
+    }
+    return;
+  }
+
+  if (["petals", "moons", "crystals", "spores", "bramble", "wings", "scales", "teeth", "prisms", "cartridges", "currents", "swarms", "stars"].includes(style)) {
+    const counts = { petals: 8, moons: 6, crystals: 9, spores: 14, bramble: 11, wings: 6, scales: 12, teeth: 14, prisms: 7, cartridges: 10, currents: 9, swarms: 16, stars: 8 };
+    const count = counts[style] || 8;
+    ctx.beginPath(); ctx.arc(point.x, point.y, radius * .76, 0, Math.PI * 2); ctx.stroke();
+    for (let index = 0; index < count; index += 1) {
+      const angle = state.time * (index % 2 ? -.25 : .35) + index / count * Math.PI * 2;
+      const rr = radius * (.72 + (style === "swarms" || style === "spores" ? (index % 3) * .1 : .13));
+      const x = point.x + Math.cos(angle) * rr; const y = point.y + Math.sin(angle) * rr;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(angle + Math.PI / 2); ctx.fillStyle = index % 3 ? color : (effect.secondaryColor || "#ffffff"); ctx.globalAlpha = alpha * .78;
+      if (["petals", "wings", "spores", "swarms"].includes(style)) { ctx.beginPath(); ctx.ellipse(0, 0, style === "wings" ? 9 : style === "spores" ? 3 : 6, style === "wings" ? 3 : style === "spores" ? 3 : 2.8, angle, 0, Math.PI * 2); ctx.fill(); }
+      else if (style === "moons") { ctx.beginPath(); ctx.arc(0, 0, 6, -.9, .9); ctx.stroke(); }
+      else if (["crystals", "prisms", "stars"].includes(style)) { polygonWithContext(ctx, 0, 0, style === "stars" ? 7 : 6, style === "stars" ? 5 : style === "prisms" ? 3 : 4, -Math.PI / 2); ctx.fill(); }
+      else if (style === "cartridges") { ctx.beginPath(); ctx.roundRect(-3, -7, 6, 14, 2); ctx.fill(); }
+      else if (style === "currents") { ctx.beginPath(); ctx.moveTo(-7, -2); ctx.quadraticCurveTo(0, 5, 7, -2); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.moveTo(-5, 5); ctx.lineTo(0, -7); ctx.lineTo(5, 5); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+    }
+    return;
+  }
+
+  if (["spiral", "gears", "orbits", "halos", "singularity", "ripples"].includes(style)) {
+    if (style === "singularity") {
+      ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "rgba(2,1,9,.55)"; ctx.beginPath(); ctx.arc(point.x, point.y, radius * .62, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = "lighter";
+    }
+    const layers = style === "ripples" ? 4 : style === "halos" ? 3 : 2;
+    for (let index = 0; index < layers; index += 1) {
+      const rr = radius * (.42 + index * .22);
+      ctx.globalAlpha = alpha * (1 - index * .16); ctx.lineWidth = style === "gears" ? 3 : 2;
+      if (style === "spiral") { ctx.beginPath(); ctx.arc(point.x, point.y, rr, state.time + index, state.time + index + Math.PI * 1.55); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.ellipse(point.x, point.y, rr, rr * (style === "orbits" ? .5 : 1), state.time * (index % 2 ? -.4 : .4), 0, Math.PI * 2); ctx.stroke(); }
+    }
+    if (style === "gears") {
+      for (let index = 0; index < 12; index += 1) { const angle = index / 12 * Math.PI * 2 + state.time; ctx.save(); ctx.translate(point.x + Math.cos(angle) * radius * .78, point.y + Math.sin(angle) * radius * .78); ctx.rotate(angle); ctx.fillStyle = color; ctx.fillRect(-3, -7, 6, 14); ctx.restore(); }
+    }
+    return;
+  }
+
   ctx.beginPath();
   ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
   ctx.stroke();
@@ -3911,6 +4349,82 @@ function drawSlashEffect(effect, point, alpha) {
     ctx.lineWidth = Math.max(1, 9 * alpha);
     ctx.globalAlpha = alpha * .34;
     ctx.stroke();
+    return;
+  }
+
+  if (style === "precision") {
+    const start = effect.angle - effect.arc * .28; const end = effect.angle + effect.arc * .28;
+    ctx.strokeStyle = effect.color; ctx.shadowColor = effect.color; ctx.shadowBlur = 18; ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(1, 3 * alpha);
+    ctx.beginPath(); ctx.moveTo(point.x + Math.cos(start) * effect.radius * .25, point.y + Math.sin(start) * effect.radius * .25); ctx.lineTo(point.x + Math.cos(end) * effect.radius, point.y + Math.sin(end) * effect.radius); ctx.stroke();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.stroke();
+    return;
+  }
+
+  if (["shards", "star", "facet", "trident"].includes(style)) {
+    const count = style === "trident" ? 3 : style === "star" ? 7 : 5;
+    for (let index = 0; index < count; index += 1) {
+      const t = count === 1 ? .5 : index / (count - 1); const angle = effect.angle - effect.arc / 2 + effect.arc * t;
+      const rr = effect.radius * (.66 + (index % 2) * .25 + progress * .08);
+      ctx.save(); ctx.translate(point.x + Math.cos(angle) * rr, point.y + Math.sin(angle) * rr); ctx.rotate(angle);
+      ctx.fillStyle = index % 2 ? (effect.secondaryColor || "#ffffff") : effect.color; ctx.globalAlpha = alpha; ctx.shadowBlur = 15; ctx.shadowColor = effect.color;
+      polygonWithContext(ctx, 0, 0, style === "star" ? 8 : 6, style === "facet" ? 4 : style === "star" ? 5 : 3, angle); ctx.fill(); ctx.restore();
+    }
+    return;
+  }
+
+  if (["petals", "butterfly", "swarm"].includes(style)) {
+    const count = style === "swarm" ? 13 : style === "butterfly" ? 8 : 7;
+    ctx.fillStyle = effect.color; ctx.shadowColor = effect.color; ctx.shadowBlur = 16;
+    for (let index = 0; index < count; index += 1) {
+      const t = index / Math.max(1, count - 1); const angle = effect.angle - effect.arc / 2 + effect.arc * t;
+      const rr = effect.radius * (.58 + (index % 3) * .15 + progress * .1);
+      ctx.save(); ctx.translate(point.x + Math.cos(angle) * rr, point.y + Math.sin(angle) * rr); ctx.rotate(angle + state.time * (index % 2 ? -2 : 2)); ctx.globalAlpha = alpha * (.7 + (index % 2) * .25);
+      ctx.beginPath(); ctx.ellipse(0, 0, style === "butterfly" ? 8 : style === "swarm" ? 3 : 6, style === "butterfly" ? 3 : 2.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+    return;
+  }
+
+  if (["helix", "whip", "wave"].includes(style)) {
+    const strands = style === "helix" ? 2 : 1;
+    ctx.shadowColor = effect.color; ctx.shadowBlur = 20; ctx.lineCap = "round";
+    for (let strand = 0; strand < strands; strand += 1) {
+      ctx.strokeStyle = strand ? (effect.secondaryColor || "#ffffff") : effect.color; ctx.globalAlpha = alpha * (strand ? .6 : 1); ctx.lineWidth = Math.max(1, (style === "whip" ? 4 : 6) * alpha);
+      ctx.beginPath();
+      for (let index = 0; index <= 16; index += 1) {
+        const t = index / 16; const angle = effect.angle - effect.arc / 2 + effect.arc * t;
+        const rr = effect.radius * (.28 + t * .68) + Math.sin(t * Math.PI * (style === "wave" ? 3 : 5) + strand * Math.PI) * effect.radius * .06;
+        const x = point.x + Math.cos(angle) * rr; const y = point.y + Math.sin(angle) * rr;
+        if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (["serrated", "thorn", "fang"].includes(style)) {
+    const teeth = style === "fang" ? 5 : 11;
+    ctx.fillStyle = effect.color; ctx.globalAlpha = alpha; ctx.shadowColor = effect.color; ctx.shadowBlur = 18;
+    ctx.beginPath();
+    for (let index = 0; index <= teeth; index += 1) {
+      const t = index / teeth; const angle = effect.angle - effect.arc / 2 + effect.arc * t;
+      const rr = effect.radius * (index % 2 ? 1 : style === "fang" ? .55 : .73);
+      const x = point.x + Math.cos(angle) * rr; const y = point.y + Math.sin(angle) * rr;
+      if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(point.x + Math.cos(effect.angle + effect.arc / 2) * effect.radius * .42, point.y + Math.sin(effect.angle + effect.arc / 2) * effect.radius * .42); ctx.closePath(); ctx.fill();
+    return;
+  }
+
+  if (["orbit", "halo", "void", "sigil", "drill"].includes(style)) {
+    if (style === "void") { ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = "rgba(2,1,9,.7)"; ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(point.x, point.y, effect.radius * .58, effect.angle - effect.arc / 2, effect.angle + effect.arc / 2); ctx.lineTo(point.x, point.y); ctx.fill(); ctx.globalCompositeOperation = "lighter"; }
+    ctx.strokeStyle = effect.color; ctx.shadowColor = effect.color; ctx.shadowBlur = 22; ctx.globalAlpha = alpha;
+    const layers = style === "drill" ? 4 : style === "halo" ? 3 : 2;
+    for (let layer = 0; layer < layers; layer += 1) {
+      ctx.lineWidth = Math.max(1, (5 - layer) * alpha);
+      const rr = effect.radius * (.45 + layer * .17 + progress * .08);
+      ctx.beginPath(); ctx.arc(point.x, point.y, rr, effect.angle - effect.arc / 2 - layer * .12, effect.angle + effect.arc / 2 + layer * .12); ctx.stroke();
+    }
+    if (style === "sigil") { for (let index = 0; index < 4; index += 1) { const angle = effect.angle - effect.arc / 2 + effect.arc * index / 3; ctx.fillStyle = effect.secondaryColor || "#ffffff"; polygonWithContext(ctx, point.x + Math.cos(angle) * effect.radius * .82, point.y + Math.sin(angle) * effect.radius * .82, 4, 4, angle); ctx.fill(); } }
     return;
   }
 
@@ -3967,6 +4481,12 @@ function drawEffects() {
     } else if (effect.type === "slash") {
       const point = worldToScreen(effect.x, effect.y);
       drawSlashEffect(effect, point, alpha);
+    } else if (effect.type === "cast") {
+      const point = worldToScreen(effect.x, effect.y);
+      drawCastEffect(effect, point, alpha);
+    } else if (effect.type === "impact") {
+      const point = worldToScreen(effect.x, effect.y);
+      drawImpactEffect(effect, point, alpha);
     } else if (effect.type === "status") {
       const point = worldToScreen(effect.x, effect.y);
       ctx.globalAlpha = alpha * .85;
