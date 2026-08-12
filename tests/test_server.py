@@ -30,6 +30,24 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertRegex(weapon["color"], r"^#[0-9a-fA-F]{6}$")
         self.assertIsInstance(adjustments, list)
 
+    def test_explicit_tracking_flying_sword_is_never_rewritten_as_orbit(self):
+        raw = server.offline_weapon("自动追踪敌人的飞剑", level=4)
+        raw.update(delivery="orbit", trajectory="straight", homing=0)
+        weapon, _ = server.rebalance_weapon(raw, level=4, forge_tier=2, wish="自动追踪敌人的飞剑")
+        self.assertEqual(weapon["delivery"], "projectile")
+        self.assertEqual(weapon["visual_form"], "blade")
+        self.assertEqual(weapon["trajectory"], "homing")
+        self.assertGreaterEqual(weapon["homing"], .92)
+        self.assertIn("不会固定环绕", weapon["behavior_summary"])
+        self.assertLessEqual(weapon["balance_score"], weapon["budget"])
+
+    def test_poison_and_fire_are_separate_numeric_statuses(self):
+        poisoned, _ = server.rebalance_weapon(server.offline_weapon("孢子剧毒猎弓", 2), 2, 1, "孢子剧毒猎弓")
+        burning, _ = server.rebalance_weapon(server.offline_weapon("燃烧猎弓", 2), 2, 1, "燃烧猎弓")
+        self.assertGreater(poisoned["poison_damage"], 0)
+        self.assertEqual(poisoned["burn_damage"], 0)
+        self.assertGreater(burning["burn_damage"], 0)
+
     def test_balance_budget_reduces_extreme_damage(self):
         raw = server.offline_weapon("普通武器", level=1)
         raw.update(damage=160, cooldown=0.18, projectile_count=8, pierce=7,
@@ -149,7 +167,7 @@ class WeaponCompilerTests(unittest.TestCase):
             self.assertEqual(choice["target_index"], 0)
             self.assertIn(choice["mechanic"], server.MUTATION_COMPATIBILITY["projectile"])
 
-    def test_mutation_sanitizer_rejects_incompatible_and_duplicate_mechanics(self):
+    def test_mutation_sanitizer_preserves_valid_cross_delivery_semantics_and_repairs_duplicates(self):
         weapons = [{"name": "折光裁决", "delivery": "beam", "mutations": [{"mechanic": "fork"}]}]
         invalid = {"choices": [{
             "target_index": 3,
@@ -165,16 +183,17 @@ class WeaponCompilerTests(unittest.TestCase):
         choices = server.sanitize_mutation_choices(invalid, weapons, 2)
         mechanics = [choice["mechanic"] for choice in choices]
         self.assertEqual(len(set(mechanics)), 3)
-        self.assertNotIn("split", mechanics)
+        self.assertEqual(mechanics[0], "split")
         self.assertNotIn("fork", mechanics)
         self.assertTrue(all(choice["accent_color"].startswith("#") for choice in choices))
         self.assertTrue(all(choice["mutation_round"] == 2 for choice in choices))
+        self.assertEqual(choices[0]["title"], "非法分裂")
         self.assertTrue(all(
             choice["title"] == server.MUTATION_DEFAULTS[choice["mechanic"]][0]
-            for choice in choices
+            for choice in choices[1:]
         ))
 
-    def test_mutation_openai_context_exposes_only_fixed_attack_grammar(self):
+    def test_mutation_openai_context_exposes_rich_shared_attack_grammar(self):
         weapons = [{
             "name": "相位双匕", "delivery": "melee", "visual_form": "daggers",
             "tags": ["近战"], "mutations": [{"mechanic": "chain"}],
@@ -195,7 +214,10 @@ class WeaponCompilerTests(unittest.TestCase):
             context["weapons"][0]["compatible_mechanics"],
             server.MUTATION_COMPATIBILITY["melee"],
         )
-        self.assertNotIn("split", context["weapons"][0]["compatible_mechanics"])
+        self.assertIn("split", context["weapons"][0]["compatible_mechanics"])
+        self.assertIn("poison_cloud", context["weapons"][0]["compatible_mechanics"])
+        self.assertIn("black_hole", context["weapons"][0]["compatible_mechanics"])
+        self.assertGreaterEqual(len(context["weapons"][0]["compatible_mechanics"]), 28)
 
     def test_mutation_copy_rejects_synthetic_vocabulary_and_long_titles(self):
         self.assertEqual(server.mutation_copy("量子超频协议", "虫卵弹", 7, title=True), "虫卵弹")
