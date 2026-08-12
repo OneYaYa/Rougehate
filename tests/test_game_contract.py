@@ -11,11 +11,28 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn("const openingWaveSizes = [8];", GAME)
         self.assertIn("if (stageIndex !== 0) return;", GAME)
 
-    def test_three_forges_follow_the_new_combat_beats(self):
+    def test_four_forges_follow_the_new_combat_beats(self):
+        self.assertIn("forgeOpened: [false, false, false, false]", GAME)
         self.assertIn('queueReward("forge", clearedTier)', GAME)
-        self.assertIn('queueReward("forge", 2)', GAME)
-        self.assertIn("state.finalBossForgeAt = state.time + 10", GAME)
-        self.assertIn('queueReward("forge", 3)', GAME)
+        self.assertIn("const nextForgeTier = enemy.bossIndex + 2", GAME)
+        self.assertIn("state.finalBossForgeAt = state.time + 15", GAME)
+        self.assertIn('queueReward("forge", 4)', GAME)
+        self.assertIn("weapons.length >= 5", GAME)
+
+    def test_ai_mutations_use_effect_graphs_without_named_templates(self):
+        self.assertIn('function executeEffectRules(trigger, weapon, context = {})', GAME)
+        self.assertIn('executeEffectRules("on_attack"', GAME)
+        self.assertIn('executeEffectRules("on_hit"', GAME)
+        self.assertIn('executeEffectRules("on_kill"', GAME)
+        self.assertNotIn("mutationMechanicMeta", GAME)
+        self.assertNotIn("mutationWishSuggestions", GAME)
+        self.assertIn('effects: Array.isArray(choice.effects)', GAME)
+
+    def test_upgrade_rarity_palette_and_metal_ai_cards_are_distinct(self):
+        for color in ("#f2f2ef", "#70df86", "#55aaff", "#b47cff", "#ff9f43"):
+            self.assertIn(color, GAME)
+        self.assertIn('rarity: "uncommon"', GAME)
+        self.assertIn('card.style.setProperty("--rarity-color", "#b8c2ce")', GAME)
 
     def test_dot_has_independent_ticks_and_visible_feedback(self):
         self.assertIn("enemy.burnTickAt = state.time + .35", GAME)

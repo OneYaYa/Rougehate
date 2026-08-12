@@ -147,7 +147,7 @@
     state.xpNeed = 1_000_000_000;
     state.rewardQueue = [];
     state.bossSpawned = [true, true, true];
-    state.forgeOpened = [true, true, true];
+    state.forgeOpened = [true, true, true, true];
     state.encounterTriggered = Array(6).fill(true);
     state.openingWaveRemaining = 0;
     player.invulnerable = 999;

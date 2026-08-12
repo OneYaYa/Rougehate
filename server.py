@@ -186,15 +186,6 @@ ARCHETYPE_SCHEMA: dict[str, Any] = {
 }
 
 
-MUTATION_MECHANICS = [
-    "split", "return", "ricochet", "chain", "nova", "echo",
-    "fork", "crescent", "aftershock", "orbit_salvo",
-    "seeking", "poison_cloud", "burning_ground", "frost_shatter",
-    "gravity_well", "barrage", "spiral_dance", "starfall",
-    "phantom_double", "blood_drain", "execution_mark", "tether",
-    "minefield", "time_freeze", "swarm", "wall", "drill", "black_hole",
-]
-
 MUTATION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -207,11 +198,52 @@ MUTATION_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "target_index": {"type": "integer", "minimum": 0, "maximum": 3},
+                    "target_index": {"type": "integer", "minimum": 0, "maximum": 4},
                     "evolution_name": {"type": "string"},
                     "title": {"type": "string"},
                     "description": {"type": "string"},
-                    "mechanic": {"type": "string", "enum": MUTATION_MECHANICS},
+                    "effects": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "trigger": {"type": "string", "enum": ["on_attack", "on_hit", "on_kill"]},
+                                "action": {
+                                    "type": "string",
+                                    "enum": [
+                                        "repeat_attack", "spawn_projectiles", "area_damage", "chain",
+                                        "create_zone", "apply_status", "pull", "heal", "execute",
+                                        "modify_projectile",
+                                    ],
+                                },
+                                "target": {
+                                    "type": "string",
+                                    "enum": ["self", "hit_target", "nearest", "strongest", "cluster", "around_hit"],
+                                },
+                                "trajectory": {
+                                    "type": "string",
+                                    "enum": ["inherit", "straight", "homing", "boomerang", "spiral", "wave", "skyfall", "radial"],
+                                },
+                                "status": {"type": "string", "enum": ["none", "burn", "poison", "slow", "mark"]},
+                                "visual": {
+                                    "type": "string",
+                                    "enum": ["metal", "ember", "spore", "frost", "lightning", "gravity", "blood", "void", "blade", "star"],
+                                },
+                                "amount": {"type": "number", "minimum": 0, "maximum": 1.5},
+                                "count": {"type": "integer", "minimum": 0, "maximum": 8},
+                                "radius": {"type": "number", "minimum": 0, "maximum": 220},
+                                "delay": {"type": "number", "minimum": 0, "maximum": 2},
+                                "duration": {"type": "number", "minimum": 0, "maximum": 6},
+                                "chance": {"type": "number", "minimum": 0, "maximum": 1},
+                            },
+                            "required": [
+                                "trigger", "action", "target", "trajectory", "status", "visual",
+                                "amount", "count", "radius", "delay", "duration", "chance",
+                            ],
+                        },
+                    },
                     "accent_color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
                     "tradeoff": {
                         "type": "string",
@@ -226,7 +258,7 @@ MUTATION_SCHEMA: dict[str, Any] = {
                     },
                 },
                 "required": [
-                    "target_index", "evolution_name", "title", "description", "mechanic",
+                    "target_index", "evolution_name", "title", "description", "effects",
                     "accent_color", "tradeoff", "tradeoff_text", "tags",
                 ],
             },
@@ -235,58 +267,32 @@ MUTATION_SCHEMA: dict[str, Any] = {
     "required": ["choices"],
 }
 
-# Every mutation is expressed through shared attack/on-hit hooks, so a player's
-# evolution fantasy is never silently replaced just because the base delivery
-# type is different.  Runtime safety and numeric costs are still server-owned.
-MUTATION_COMPATIBILITY = {
-    delivery: list(MUTATION_MECHANICS)
-    for delivery in ("projectile", "beam", "aura", "orbit", "melee")
-}
-
-MUTATION_DEFAULTS = {
-    "split": ("虫卵弹", "命中以后破壳，孵出两枚侧向子弹。", "#71f6ff", "damage_down", "主弹伤害略降"),
-    "return": ("归巢骨钩", "弹体飞到尽头后会想家，折返再切一次敌群。", "#ffd166", "cooldown_up", "发射间隔略微延长"),
-    "ricochet": ("猎犬子弹", "弹体咬中目标后，立刻嗅向另一个尚未命中的敌人。", "#7cf29a", "damage_down", "单发伤害略降"),
-    "chain": ("雷鳗脊骨", "每次命中都会从伤口里钻出一道电弧。", "#8ee8ff", "damage_down", "本体伤害略降"),
-    "nova": ("死星花", "被这件武器杀死的目标会开花，向四周喷出星屑。", "#ff8a4c", "none", "只有击杀时开花"),
-    "echo": ("昨天的枪声", "每轮攻击过后，昨天的同一击会迟到一次。", "#c9a5ff", "cooldown_up", "本体攻击间隔略微延长"),
-    "fork": ("三棱镜", "主光束穿过旧棱镜，在两侧折出较弱光束。", "#f4a8ff", "damage_down", "主光束伤害略降"),
-    "crescent": ("飞出去的月牙", "每次挥砍都会甩掉一片能继续飞行的刃光。", "#ff6b8b", "range_down", "本体挥砍距离略降"),
-    "aftershock": ("第二次心跳", "领域脉冲结束后，会在原地重新跳动一次。", "#6dd7ff", "cooldown_up", "领域脉冲间隔略微延长"),
-    "orbit_salvo": ("发怒的卫星", "环绕造物不再安静，周期性向外吐出星屑。", "#a9ff85", "cooldown_up", "环绕命中间隔略微延长"),
-    "seeking": ("闻血飞刃", "攻击会转向最近的活物，直到真正咬中目标。", "#71f6ff", "damage_down", "追踪造物的单次伤害略降"),
-    "poison_cloud": ("绿肺孢子", "命中处长出短暂毒云，持续腐蚀其中的敌人。", "#67e86f", "damage_down", "本体伤害略降"),
-    "burning_ground": ("余烬脚印", "命中处留下燃烧地面，踏入者会被点燃。", "#ff7a38", "cooldown_up", "攻击间隔略微延长"),
-    "frost_shatter": ("碎冰牙床", "受寒目标被命中时碎裂，冰片割伤周围敌人。", "#9deaff", "none", "需要先令目标受寒"),
-    "gravity_well": ("沉星胃袋", "命中点短暂塌陷，把周围敌人拖向伤口。", "#b28cff", "cooldown_up", "攻击间隔略微延长"),
-    "barrage": ("三拍心脏", "每轮攻击会以短促节奏追加两次较弱复现。", "#ffd166", "damage_down", "每次攻击的本体伤害下降"),
-    "spiral_dance": ("螺旋鳍", "攻击沿旋转轨迹展开，从不同角度切入敌群。", "#f4a8ff", "range_down", "有效射程略降"),
-    "starfall": ("倒悬流星", "攻击从目标上方坠落，优先砸向敌群中心。", "#ffbd69", "cooldown_up", "坠落攻击间隔较长"),
-    "phantom_double": ("背面幽灵", "每次攻击都会在另一侧出现一枚反向的幽灵副本。", "#c9a5ff", "damage_down", "本体与幽灵伤害均略降"),
-    "blood_drain": ("吸血水蛭", "重伤敌人时抽回少量生命，强敌提供更多。", "#ff5d73", "damage_down", "武器伤害略降"),
-    "execution_mark": ("断头刻痕", "反复命中会留下刻痕，低生命目标被直接收割。", "#f5e6b5", "none", "只对濒死目标生效"),
-    "tether": ("脐带电索", "命中者与邻近敌人短暂相连，共同承受撕扯。", "#58e6ff", "damage_down", "主目标伤害略降"),
-    "minefield": ("寄生雷卵", "攻击会在目标附近埋下一枚延迟孵化的地雷。", "#ff9f43", "cooldown_up", "攻击间隔略微延长"),
-    "time_freeze": ("停摆眼球", "命中会形成短促停滞圈，使附近敌人显著减速。", "#7dd3fc", "range_down", "有效射程略降"),
-    "swarm": ("幼虫蜂群", "命中后放出数只自动寻找不同猎物的小型造物。", "#a9ff85", "damage_down", "母体攻击伤害下降"),
-    "wall": ("横生骨墙", "攻击横向铺开成一道弹幕，封住整条逼近路线。", "#f1f0eb", "cooldown_up", "攻击间隔略微延长"),
-    "drill": ("穿骨钻头", "攻击咬住目标后继续向前钻透整列敌人。", "#ffcf5c", "range_down", "有效射程略降"),
-    "black_hole": ("无底瞳孔", "击杀会留下微型黑洞，吸附并碾压附近敌人。", "#9b72ff", "none", "只有击杀时生成"),
-}
-
-MUTATION_BANNED_VOCABULARY = (
-    "协议", "回路", "模块", "演算", "量子", "超频", "增幅", "矩阵", "系统", "终极",
-)
-
-
 def mutation_copy(value: Any, fallback: str, limit: int, *, title: bool = False) -> str:
-    """Keep model-authored flavor concrete and short; mechanics remain server-owned."""
+    """Preserve model-authored copy; truncate only to keep the card layout stable."""
     candidate = str(value or "").strip()
-    if any(word in candidate for word in MUTATION_BANNED_VOCABULARY):
-        return fallback
-    if title and not 2 <= len(candidate) <= 7:
-        return fallback
     return (candidate or fallback)[:limit]
+
+
+# This is an execution language, not an upgrade catalogue: the model composes
+# event/action instructions instead of selecting a named upgrade template.
+EFFECT_LANGUAGE = {
+    "triggers": {
+        "on_attack": "武器每次主动攻击时", "on_hit": "该武器命中敌人时", "on_kill": "该武器击杀敌人时",
+    },
+    "actions": {
+        "repeat_attack": "延迟后复现该武器的一次攻击",
+        "spawn_projectiles": "从指定位置生成一组可选轨迹的实体攻击",
+        "area_damage": "对指定位置附近造成一次范围伤害",
+        "chain": "从命中点连续跳向其他敌人",
+        "create_zone": "留下持续区域，可附带状态",
+        "apply_status": "施加燃烧、中毒、减速或标记",
+        "pull": "把范围内敌人牵引到指定位置",
+        "heal": "按本次伤害或击杀恢复生命",
+        "execute": "收割低生命目标",
+        "modify_projectile": "追加改变轨迹、数量或穿透方式的攻击副本",
+    },
+    "composition": "同一选择可组合多条不同 trigger/action 指令；不要从命名技能表中挑选。",
+}
 
 
 ARCHETYPE_PROMPT = """你是宇宙肉鸽动作游戏《ROUGE HATE》的开局流派编译器。
@@ -314,8 +320,8 @@ SYSTEM_PROMPT = """你是肉鸽动作游戏《ROUGE HATE》的武器设计编译
 - 完整保留愿望的核心幻想，同时只通过伤害、攻击间隔、数量、范围等数字让它在幸存者类游戏中平衡。
 - 世界观属于深空远征与异星生态；名称和描述可使用星核、虫洞、星云科技等意象，但玩家明确要求的具体武器仍必须清楚可辨。
 - 参考当前武器的标签与效果，优先创造能形成流派协同、但不会重复已有定位的新武器。
-- 这是三个阶段各一次的“新增武器重构”，不是升级已有武器；结果必须提供一种可同时运行的新攻击手段。
-- forge_tier 1/2/3 的强度严格递增。围绕 target_power_budget 设计数值；极端愿望要改编成强烈特色，而不是无条件秒杀。
+- 这是整局四次的“新增武器重构”，不是升级已有武器；结果必须提供一种可同时运行的新攻击手段。
+- forge_tier 1/2/3/4 的强度严格递增。围绕 target_power_budget 设计数值；极端愿望要改编成强烈特色，而不是无条件秒杀。
 - projectile 是离开玩家并飞行的攻击；beam 是瞬时光束；aura 是玩家周围周期范围伤害；orbit 仅在玩家明确要求环绕/卫星时使用；melee 是角色前方的近战挥砍。
 - trajectory 决定真实运动：homing 主动追敌、boomerang 折返、spiral 旋转、wave 蛇形、skyfall 从目标上空落下。targeting 严格服从玩家说的最近/最强/敌群/随机目标。
 - visual_form 决定玩家真正看到的实体模型，必须贴合愿望：枪械用 rifle/cannon，刀剑用 blade/daggers，弓用 bow，法器用 staff/orb/tome，机械召唤物用 drone。
@@ -334,15 +340,13 @@ MUTATION_PROMPT = """你是肉鸽动作游戏《ROUGE HATE》的攻击形态进�
 - evolution_wish 是玩家本次亲自输入的特效进化方向，是最高优先级语义契约；三项都必须是它的三个真实变体，不能偷换成常见的爆炸或连锁闪电。
 - 恰好返回三个差异明显的选择。每项改造一件现有武器，绝不新增武器槽。
 - 这次奖励的核心必须是“攻击方式改变”，不是伤害、攻速、范围等纯数值增加。
-- mechanic 从丰富的通用行为组件中选择；所有组件都可作用于任意基础武器。必须选择最贴近玩家原话的组件，不得因武器 delivery 不同而替换语义。
-- 优先响应玩家已经选择的流派标签、角色身份与武器历史，但至少保留一个意外而合理的跨流派选择。
-- 三个选择分别承担：一个直观可靠、一个强化当前组合、一个古怪但可理解。不要写成三份同义方案。
-- 避免给同一武器重复 existing_mutations 中已有的 mechanic。
-- evolution_name 是异变后的武器名；title 是 2—7 个字的具体怪东西或可视意象；description 用一句简体中文准确说明真实攻击行为。
-- 避免“协议、回路、模块、演算、量子、超频、增幅、矩阵、系统、终极”等批量生成式词汇。优先使用骨头、牙齿、虫卵、镜子、伤口、旧玩具、器官、动物习性等具体意象。
+- 不存在固定异变模板、技能名录或兼容表。你自行设计三个方案，再用 effect_language 的底层事件与动作自由组合成可执行行为；每个方案可有任意多条 effects。
+- 三个方案都要直接回应玩家原话，但从触发时机、运动方式、目标选择、空间形态或连携逻辑上形成肉眼可见的差异。不要硬塞无关的爆炸、闪电或常见套路。
+- 参考 existing_evolutions 避免复述已经拥有的行为，但不要因此偏离玩家愿望。
+- evolution_name 是异变后的武器名；title 是简短、具体、可视的概念；description 用一句简体中文准确说明 effects 真正会做什么。
 - 世界观使用星云、虫洞、异星生态和深空科技意象。颜色必须为 #RRGGBB，tags 为简短中文。
 - tradeoff 是异变的平衡代价；强力且稳定触发的机制应有代价，击杀触发类可以为 none。
-- 不生成代码，不输出 schema 之外的字段。
+- 不生成代码，不输出 schema 之外的字段。文字中承诺的每个战斗效果都必须在 effects 中完整表达。
 """
 
 
@@ -364,8 +368,8 @@ NUMERIC_LIMITS = {
     "homing": (0.0, 1.0),
 }
 
-FORGE_TIER_BUDGETS = {1: 72.0, 2: 104.0, 3: 140.0}
-FORGE_TIER_FLOORS = {1: 0.72, 2: 0.76, 3: 0.80}
+FORGE_TIER_BUDGETS = {1: 72.0, 2: 104.0, 3: 140.0, 4: 184.0}
+FORGE_TIER_FLOORS = {1: 0.72, 2: 0.76, 3: 0.80, 4: 0.84}
 
 
 def clamp(value: Any, lower: float, upper: float) -> float:
@@ -399,62 +403,6 @@ def weapon_score(weapon: dict[str, Any]) -> float:
     return weapon["damage"] / weapon["cooldown"] * count_factor * utility
 
 
-def apply_wish_semantics(weapon: dict[str, Any], wish: str) -> None:
-    """Bind explicit player verbs after generation; this layer never changes power."""
-    text = str(wish or "").strip().lower()
-    if not text:
-        return
-    tracking = any(token in text for token in (
-        "自动追踪", "追踪敌人", "追着敌人", "锁定敌人", "制导", "寻敌", "homing", "tracking", "seeking",
-    ))
-    orbiting = any(token in text for token in (
-        "围绕", "环绕", "绕着我", "护体", "卫星", "orbit", "around me",
-    ))
-    flying_blade = any(token in text for token in ("飞剑", "飞刀", "御剑", "flying sword", "flying blade"))
-    if tracking:
-        weapon["trajectory"] = "homing"
-        weapon["targeting"] = "nearest"
-        weapon["homing"] = max(.92, float(weapon.get("homing", 0) or 0))
-        if weapon.get("delivery") == "orbit" and not orbiting:
-            weapon["delivery"] = "projectile"
-        if flying_blade and not orbiting:
-            weapon["delivery"] = "projectile"
-            weapon["visual_form"] = "blade"
-            weapon["range"] = max(480, float(weapon.get("range", 0) or 0))
-            weapon["projectile_speed"] = max(430, float(weapon.get("projectile_speed", 0) or 0))
-            weapon["behavior_summary"] = "飞剑离开角色，主动转向并追击最近敌人；不会固定环绕玩家。"
-            weapon["description"] = weapon["behavior_summary"]
-            weapon["tags"] = list(dict.fromkeys([*(weapon.get("tags") or []), "飞剑", "追踪"]))[:4]
-    if orbiting:
-        weapon["delivery"] = "orbit"
-        weapon["trajectory"] = "straight"
-        weapon["behavior_summary"] = "武器固定环绕角色，持续切割进入轨道的敌人。"
-    if any(token in text for token in ("回旋", "飞回", "折返", "boomerang", "return")):
-        weapon["trajectory"] = "boomerang"
-        weapon["behavior_summary"] = "攻击飞到射程尽头后折返，再次穿过敌群。"
-    if any(token in text for token in ("螺旋", "旋转飞行", "spiral")) and not orbiting:
-        weapon["trajectory"] = "spiral"
-        weapon["behavior_summary"] = "攻击沿螺旋轨迹向目标推进。"
-    if any(token in text for token in ("蛇形", "波浪", "正弦", "wave")):
-        weapon["trajectory"] = "wave"
-        weapon["behavior_summary"] = "攻击以蛇形波浪轨迹穿过敌群。"
-    if any(token in text for token in ("天降", "从天而降", "陨石雨", "落雷", "skyfall", "meteor rain")):
-        weapon["delivery"] = "projectile"
-        weapon["trajectory"] = "skyfall"
-        weapon["targeting"] = "cluster"
-        weapon["behavior_summary"] = "攻击锁定敌群中心，并从目标上空坠落。"
-    if any(token in text for token in ("最强", "血最多", "boss", "首领")):
-        weapon["targeting"] = "strongest"
-    elif any(token in text for token in ("敌群", "聚集", "人最多", "cluster")):
-        weapon["targeting"] = "cluster"
-    if any(token in text for token in ("毒", "腐蚀", "孢子", "poison", "venom")):
-        weapon["poison_damage"] = max(7, float(weapon.get("poison_damage", 0) or 0))
-        weapon["visual_motif"] = weapon.get("visual_motif") or "发光毒囊与滴落孢子"
-    if any(token in text for token in ("火", "燃烧", "熔岩", "fire", "flame")):
-        weapon["burn_damage"] = max(7, float(weapon.get("burn_damage", 0) or 0))
-        weapon["visual_motif"] = weapon.get("visual_motif") or "灼热裂纹与余烬"
-
-
 def rebalance_weapon(
     raw: dict[str, Any], level: int, forge_tier: int | None = None, wish: str = "",
 ) -> tuple[dict[str, Any], list[str]]:
@@ -484,10 +432,6 @@ def rebalance_weapon(
         weapon["secondary_color"] = secondary_palette[(variant_seed // 12) % len(secondary_palette)]
     weapon["behavior_summary"] = str(weapon.get("behavior_summary", weapon["description"]))[:100]
     weapon["visual_motif"] = str(weapon.get("visual_motif", "异星合金与发光核心"))[:40]
-
-    # Explicit player semantics are bound before numeric balancing. From this
-    # point on, only numbers may be clamped or scaled.
-    apply_wish_semantics(weapon, wish)
 
     integer_fields = {"projectile_count", "pierce"}
     for field, (lower, upper) in NUMERIC_LIMITS.items():
@@ -549,36 +493,65 @@ def rebalance_weapon(
     return weapon, adjustments
 
 
-def existing_mutation_kinds(weapon: dict[str, Any]) -> set[str]:
-    mutations = weapon.get("mutations", [])
-    if not isinstance(mutations, list):
-        return set()
+EFFECT_TRIGGERS = {"on_attack", "on_hit", "on_kill"}
+EFFECT_ACTIONS = {
+    "repeat_attack", "spawn_projectiles", "area_damage", "chain", "create_zone",
+    "apply_status", "pull", "heal", "execute", "modify_projectile",
+}
+EFFECT_TARGETS = {"self", "hit_target", "nearest", "strongest", "cluster", "around_hit"}
+EFFECT_TRAJECTORIES = {"inherit", "straight", "homing", "boomerang", "spiral", "wave", "skyfall", "radial"}
+EFFECT_STATUSES = {"none", "burn", "poison", "slow", "mark"}
+EFFECT_VISUALS = {"metal", "ember", "spore", "frost", "lightning", "gravity", "blood", "void", "blade", "star"}
+
+
+def sanitize_effect_rule(source: Any) -> dict[str, Any] | None:
+    """Validate one model-authored instruction without replacing its concept."""
+    if not isinstance(source, dict):
+        return None
+    action = str(source.get("action", ""))
+    if action not in EFFECT_ACTIONS:
+        return None
+    trigger = str(source.get("trigger", "on_hit"))
+    target = str(source.get("target", "hit_target"))
+    trajectory = str(source.get("trajectory", "inherit"))
+    status = str(source.get("status", "none"))
+    visual = str(source.get("visual", "metal"))
     return {
-        str(item.get("mechanic", ""))
-        for item in mutations
-        if isinstance(item, dict) and item.get("mechanic") in MUTATION_MECHANICS
+        "trigger": trigger if trigger in EFFECT_TRIGGERS else "on_hit",
+        "action": action,
+        "target": target if target in EFFECT_TARGETS else "hit_target",
+        "trajectory": trajectory if trajectory in EFFECT_TRAJECTORIES else "inherit",
+        "status": status if status in EFFECT_STATUSES else "none",
+        "visual": visual if visual in EFFECT_VISUALS else "metal",
+        "amount": round(clamp(source.get("amount", 0.45), 0, 1.5), 3),
+        "count": int(clamp(source.get("count", 1), 0, 8)),
+        "radius": round(clamp(source.get("radius", 80), 0, 220), 2),
+        "delay": round(clamp(source.get("delay", 0), 0, 2), 3),
+        "duration": round(clamp(source.get("duration", 1.5), 0, 6), 3),
+        "chance": round(clamp(source.get("chance", 1), 0, 1), 3),
     }
 
 
-def mutation_candidates(weapons: list[dict[str, Any]]) -> list[tuple[int, str]]:
-    candidates: list[tuple[int, str]] = []
-    for index, weapon in enumerate(weapons[:4]):
-        delivery = str(weapon.get("delivery", "projectile"))
-        owned = existing_mutation_kinds(weapon)
-        for mechanic in MUTATION_COMPATIBILITY.get(delivery, MUTATION_COMPATIBILITY["projectile"]):
-            if mechanic not in owned:
-                candidates.append((index, mechanic))
-    if len(candidates) >= 3:
-        return candidates
-    # Very long runs may leave fewer than three unseen components. Fill the
-    # offer with compatible evolutions instead of blocking the reward flow.
-    for index, weapon in enumerate(weapons[:4]):
-        delivery = str(weapon.get("delivery", "projectile"))
-        for mechanic in MUTATION_COMPATIBILITY.get(delivery, ["nova"]):
-            pair = (index, mechanic)
-            if pair not in candidates:
-                candidates.append(pair)
-    return candidates or [(0, "nova")]
+def fallback_effect(slot: int, seed: int) -> dict[str, Any]:
+    """Build a valid instruction for local demo mode without a named skill table."""
+    rng = random.Random(seed + slot * 7919)
+    actions = sorted(EFFECT_ACTIONS)
+    trajectories = sorted(EFFECT_TRAJECTORIES - {"inherit"})
+    visuals = sorted(EFFECT_VISUALS)
+    return {
+        "trigger": ("on_attack", "on_hit", "on_kill")[slot % 3],
+        "action": actions[(seed + slot * 3) % len(actions)],
+        "target": ("nearest", "around_hit", "cluster")[slot % 3],
+        "trajectory": trajectories[(seed + slot) % len(trajectories)],
+        "status": "none",
+        "visual": visuals[(seed + slot * 2) % len(visuals)],
+        "amount": round(rng.uniform(0.35, 0.72), 2),
+        "count": rng.randint(1, 4),
+        "radius": rng.randint(70, 145),
+        "delay": round(rng.uniform(0.08, 0.55), 2),
+        "duration": round(rng.uniform(1.2, 3.2), 2),
+        "chance": round(rng.uniform(0.55, 1), 2),
+    }
 
 
 def sanitize_mutation_choices(
@@ -586,114 +559,47 @@ def sanitize_mutation_choices(
     weapons: list[dict[str, Any]],
     mutation_round: int,
 ) -> list[dict[str, Any]]:
-    """Validate model output against the live loadout and fixed mechanic grammar."""
-    safe_weapons = weapons[:4] or [{"name": "制式脉冲器", "delivery": "projectile", "mutations": []}]
-    available = mutation_candidates(safe_weapons)
+    """Keep AI concepts intact while validating their executable effect graph."""
+    safe_weapons = weapons[:5] or [{"name": "制式脉冲器", "delivery": "projectile", "mutations": []}]
     incoming = raw.get("choices", []) if isinstance(raw, dict) else []
     if not isinstance(incoming, list):
         incoming = []
     choices: list[dict[str, Any]] = []
-    used: set[tuple[int, str]] = set()
-
+    seed = int(hashlib.sha256(json.dumps(raw, ensure_ascii=False, default=str).encode()).hexdigest()[:8], 16)
     for slot in range(3):
         source = incoming[slot] if slot < len(incoming) and isinstance(incoming[slot], dict) else {}
-        target_index = int(clamp(source.get("target_index", 0), 0, len(safe_weapons) - 1))
-        mechanic = str(source.get("mechanic", ""))
-        target_delivery = str(safe_weapons[target_index].get("delivery", "projectile"))
-        pair = (target_index, mechanic)
-        repaired_mechanic = False
-        if (
-            mechanic not in MUTATION_COMPATIBILITY.get(target_delivery, [])
-            or mechanic in existing_mutation_kinds(safe_weapons[target_index])
-            or pair in used
-        ):
-            pair = next((candidate for candidate in available if candidate not in used), available[slot % len(available)])
-            target_index, mechanic = pair
-            repaired_mechanic = True
-        used.add(pair)
-
-        default_title, default_description, default_color, fixed_tradeoff, fixed_tradeoff_text = MUTATION_DEFAULTS[mechanic]
-        flavor_source = {} if repaired_mechanic else source
+        target_index = int(clamp(source.get("target_index", slot), 0, len(safe_weapons) - 1))
         target_name = str(safe_weapons[target_index].get("name", "未知武器"))[:18]
-        color = str(flavor_source.get("accent_color", default_color))
+        raw_effects = source.get("effects", [])
+        if not isinstance(raw_effects, list):
+            raw_effects = []
+        effects = [rule for item in raw_effects if (rule := sanitize_effect_rule(item))]
+        if not effects:
+            effects = [fallback_effect(slot, seed)]
+        color = str(source.get("accent_color", ("#8fd3ff", "#b9a7ff", "#ffbd69")[slot]))
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-            color = default_color
-        tags = flavor_source.get("tags", [])
+            color = ("#8fd3ff", "#b9a7ff", "#ffbd69")[slot]
+        tags = source.get("tags", [])
         if not isinstance(tags, list):
             tags = []
-        safe_tags = [str(tag)[:8] for tag in tags[:3] if str(tag).strip()]
-        if not safe_tags:
-            safe_tags = [default_title[:6], "武器异梦"]
+        safe_tags = [str(tag)[:12] for tag in tags[:3] if str(tag).strip()] or ["AI异变"]
+        tradeoff = str(source.get("tradeoff", "none"))
+        if tradeoff not in {"none", "damage_down", "cooldown_up", "range_down"}:
+            tradeoff = "none"
         choices.append({
             "target_index": target_index,
             "target_name": target_name,
-            "evolution_name": mutation_copy(
-                flavor_source.get("evolution_name"), f"{target_name}·{default_title}", 18,
-            ),
-            "title": mutation_copy(flavor_source.get("title"), default_title, 7, title=True),
-            "description": mutation_copy(flavor_source.get("description"), default_description, 88),
-            "mechanic": mechanic,
+            "evolution_name": mutation_copy(source.get("evolution_name"), f"{target_name}·异想", 24),
+            "title": mutation_copy(source.get("title"), f"异想变体 {slot + 1}", 16, title=True),
+            "description": mutation_copy(source.get("description"), "AI 将玩家愿望编译为新的攻击行为。", 120),
+            "effects": effects,
             "accent_color": color,
-            # The server owns the cost. Natural-language model output cannot
-            # turn a high-throughput mutation into a free multiplier.
-            "tradeoff": fixed_tradeoff,
-            "tradeoff_text": fixed_tradeoff_text,
+            "tradeoff": tradeoff,
+            "tradeoff_text": mutation_copy(source.get("tradeoff_text"), "无额外代价", 36),
             "tags": safe_tags,
             "mutation_round": int(clamp(mutation_round, 1, 99)),
         })
     return choices
-
-
-def preferred_mutation_mechanics(mutation_wish: str) -> list[str]:
-    text = mutation_wish.lower()
-    preferences: list[str] = []
-    theme_map = (
-        (("毒", "腐蚀", "孢子", "poison", "venom"), ("poison_cloud", "swarm", "minefield")),
-        (("火", "燃烧", "熔岩", "fire", "flame"), ("burning_ground", "starfall", "nova")),
-        (("冰", "冻结", "寒冷", "frost", "ice"), ("time_freeze", "frost_shatter", "wall")),
-        (("追踪", "寻敌", "锁定", "homing", "seeking"), ("seeking", "swarm", "tether")),
-        (("吸", "引力", "黑洞", "gravity", "black hole"), ("gravity_well", "black_hole", "tether")),
-        (("天降", "陨石", "落雷", "skyfall", "meteor"), ("starfall", "barrage", "minefield")),
-        (("吸血", "回血", "生命", "vampire", "lifesteal"), ("blood_drain", "execution_mark", "tether")),
-        (("弹幕", "很多", "铺满", "barrage", "bullet hell"), ("barrage", "wall", "spiral_dance")),
-    )
-    for keywords, mechanics in theme_map:
-        if any(keyword in text for keyword in keywords):
-            preferences.extend(mechanic for mechanic in mechanics if mechanic not in preferences)
-    keyword_map = (
-        ("split", ("分裂", "散射", "裂开", "虫卵", "孵", "split")),
-        ("return", ("飞回", "返回", "回旋", "归巢", "return")),
-        ("ricochet", ("弹跳", "跳弹", "反弹", "折返", "ricochet")),
-        ("chain", ("连锁", "闪电", "电弧", "链", "chain", "lightning")),
-        ("nova", ("爆炸", "死亡", "开花", "星屑", "nova", "explode")),
-        ("echo", ("回声", "重复", "残影", "第二次", "echo")),
-        ("fork", ("分叉", "三道", "折射", "棱镜", "fork", "prism")),
-        ("crescent", ("月牙", "剑气", "刃光", "飞刃", "crescent")),
-        ("aftershock", ("余波", "震荡", "心跳", "脉冲", "aftershock")),
-        ("orbit_salvo", ("卫星", "齐射", "环绕", "喷出", "salvo")),
-        ("seeking", ("追踪", "寻敌", "制导", "seeking", "homing")),
-        ("poison_cloud", ("毒云", "毒雾", "孢子", "poison cloud")),
-        ("burning_ground", ("火地", "燃烧地面", "岩浆", "burning ground")),
-        ("frost_shatter", ("冰碎", "碎冰", "冰爆", "shatter")),
-        ("gravity_well", ("吸引", "引力井", "gravity well")),
-        ("barrage", ("连射", "弹幕", "barrage")),
-        ("spiral_dance", ("螺旋", "旋舞", "spiral")),
-        ("starfall", ("天降", "陨石", "落雷", "starfall")),
-        ("phantom_double", ("分身", "镜像", "幽灵", "phantom")),
-        ("blood_drain", ("吸血", "回血", "lifesteal")),
-        ("execution_mark", ("处决", "斩杀", "标记", "execute")),
-        ("tether", ("连接", "牵引", "脐带", "tether")),
-        ("minefield", ("地雷", "陷阱", "mine")),
-        ("time_freeze", ("时停", "停滞", "冻结时间", "time freeze")),
-        ("swarm", ("蜂群", "虫群", "幼虫", "swarm")),
-        ("wall", ("墙", "横排", "封路", "wall")),
-        ("drill", ("钻", "穿透", "drill")),
-        ("black_hole", ("黑洞", "坍缩", "black hole")),
-    )
-    for mechanic, keywords in keyword_map:
-        if any(keyword in text for keyword in keywords) and mechanic not in preferences:
-            preferences.append(mechanic)
-    return preferences
 
 
 def offline_mutations(
@@ -702,43 +608,29 @@ def offline_mutations(
     mutation_round: int,
     mutation_wish: str = "",
 ) -> dict[str, Any]:
-    """Deterministic fallback keeps every-third-level rewards playable offline."""
-    safe_weapons = weapons[:4] or [{"name": "制式脉冲器", "delivery": "projectile"}]
-    seed_text = json.dumps([safe_weapons, build_tags, mutation_round, mutation_wish], ensure_ascii=False, sort_keys=True, default=str)
-    rng = random.Random(int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:12], 16))
-    candidates = mutation_candidates(safe_weapons)
-    rng.shuffle(candidates)
-    preferred = preferred_mutation_mechanics(mutation_wish)
-    if preferred:
-        candidates.sort(key=lambda pair: preferred.index(pair[1]) if pair[1] in preferred else len(preferred) + rng.random())
-    raw_choices = []
-    for target_index, mechanic in candidates[:3]:
-        title, description, color, tradeoff, tradeoff_text = MUTATION_DEFAULTS[mechanic]
+    """Procedural local demo; real semantic design comes from OpenAI when configured."""
+    safe_weapons = weapons[:5] or [{"name": "制式脉冲器", "delivery": "projectile"}]
+    wish = str(mutation_wish).strip() or "让攻击产生意想不到的变化"
+    seed_text = json.dumps([safe_weapons, build_tags, mutation_round, wish], ensure_ascii=False, sort_keys=True, default=str)
+    seed = int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:12], 16)
+    colors = ("#83d6ff", "#c3a6ff", "#ffbd69")
+    angles = ("触发时机", "运动轨迹", "命中后果")
+    choices = []
+    for slot in range(3):
+        target_index = (seed + slot) % len(safe_weapons)
         target_name = str(safe_weapons[target_index].get("name", "未知造物"))[:18]
-        wish_note = str(mutation_wish).strip()[:30]
-        described = description if not wish_note else f"回应「{wish_note}」，{description}"
-        raw_choices.append({
+        choices.append({
             "target_index": target_index,
-            "evolution_name": f"{target_name}·{title[:4]}",
-            "title": title,
-            "description": described,
-            "mechanic": mechanic,
-            "accent_color": color,
-            "tradeoff": tradeoff,
-            "tradeoff_text": tradeoff_text,
-            "tags": [title[:6], "形态进化"],
+            "evolution_name": f"{target_name}·{wish[:8]}",
+            "title": f"{wish[:8]}·{slot + 1}",
+            "description": f"围绕「{wish[:42]}」改变{angles[slot]}；连接 OpenAI 后由模型完整理解并设计。",
+            "effects": [fallback_effect(slot, seed)],
+            "accent_color": colors[slot],
+            "tradeoff": "none",
+            "tradeoff_text": "本地演示模式",
+            "tags": [wish[:10], angles[slot]],
         })
-    while len(raw_choices) < 3:
-        target_index, mechanic = candidates[len(raw_choices) % len(candidates)]
-        title, description, color, tradeoff, tradeoff_text = MUTATION_DEFAULTS[mechanic]
-        target_name = str(safe_weapons[target_index].get("name", "未知造物"))[:18]
-        raw_choices.append({
-            "target_index": target_index, "evolution_name": f"{target_name}·{title[:4]}",
-            "title": title, "description": description, "mechanic": mechanic,
-            "accent_color": color, "tradeoff": tradeoff, "tradeoff_text": tradeoff_text,
-            "tags": [title[:6]],
-        })
-    return {"choices": raw_choices[:3]}
+    return {"choices": choices}
 
 
 def offline_weapon(wish: str, level: int) -> dict[str, Any]:
@@ -1051,7 +943,7 @@ def call_openai(
     forge_tier: int = 1,
     archetype: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    forge_tier = int(clamp(forge_tier, 1, 3))
+    forge_tier = int(clamp(forge_tier, 1, 4))
     archetype = archetype if isinstance(archetype, dict) else {}
     budget = weapon_budget(level, forge_tier)
     context = {
@@ -1105,16 +997,25 @@ def call_mutation_openai(
     mutation_wish: str = "",
 ) -> dict[str, Any]:
     safe_weapons = []
-    for index, weapon in enumerate(weapons[:4]):
+    for index, weapon in enumerate(weapons[:5]):
         delivery = str(weapon.get("delivery", "projectile"))
+        mutations = weapon.get("mutations", [])
+        if not isinstance(mutations, list):
+            mutations = []
         safe_weapons.append({
             "index": index,
             "name": str(weapon.get("name", "未知造物"))[:18],
             "delivery": delivery,
             "visual_form": str(weapon.get("visual_form", "rifle"))[:12],
             "tags": [str(tag)[:10] for tag in weapon.get("tags", [])[:4]],
-            "existing_mutations": sorted(existing_mutation_kinds(weapon)),
-            "compatible_mechanics": MUTATION_COMPATIBILITY.get(delivery, ["chain", "nova"]),
+            "existing_evolutions": [
+                {
+                    "title": str(item.get("title", ""))[:20],
+                    "description": str(item.get("description", ""))[:100],
+                    "effects": item.get("effects", []),
+                }
+                for item in mutations if isinstance(item, dict)
+            ],
         })
     context = {
         "mutation_round": int(clamp(mutation_round, 1, 99)),
@@ -1127,10 +1028,7 @@ def call_mutation_openai(
         },
         "build_tags": [str(tag)[:16] for tag in build_tags[:24]],
         "weapons": safe_weapons,
-        "mechanic_dictionary": {
-            mechanic: MUTATION_DEFAULTS[mechanic][1]
-            for mechanic in MUTATION_MECHANICS
-        },
+        "effect_language": EFFECT_LANGUAGE,
     }
     return call_structured_openai(
         MUTATION_PROMPT, context, MUTATION_SCHEMA, "attack_mutation_choices", session_id, 1200,
@@ -1254,7 +1152,7 @@ class GameHandler(SimpleHTTPRequestHandler):
                 weapons = body.get("weapons", [])
                 if not isinstance(weapons, list) or not weapons:
                     raise ValueError("至少需要一件现有武器才能异变")
-                weapons = [weapon for weapon in weapons[:4] if isinstance(weapon, dict)]
+                weapons = [weapon for weapon in weapons[:5] if isinstance(weapon, dict)]
                 if not weapons:
                     raise ValueError("武器数据无效")
                 build_tags = body.get("buildTags", [])
@@ -1290,7 +1188,7 @@ class GameHandler(SimpleHTTPRequestHandler):
             if not wish or len(wish) > 180:
                 raise ValueError("愿望需要 1–180 个字符")
             level = int(clamp(body.get("level", 1), 1, 99))
-            forge_tier = int(clamp(body.get("forgeTier", 1), 1, 3))
+            forge_tier = int(clamp(body.get("forgeTier", 1), 1, 4))
             loadout = body.get("loadout", [])
             if not isinstance(loadout, list):
                 loadout = []

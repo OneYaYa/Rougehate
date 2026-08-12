@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#09090d">
   <meta name="description" content="用一句话创造武器，在三阶段星海远征中击败敌人的肉鸽游戏。">
   <meta property="og:title" content="ROUGE HATE — 说出你的武器">
-  <meta property="og:description" content="AI 驱动的宇宙幸存者肉鸽：从一句幻想开始，亲手创造四件真正改变攻击方式的武器。">
+  <meta property="og:description" content="AI 驱动的宇宙幸存者肉鸽：从一句幻想开始，带着初始武器再亲手创造四件真正改变攻击方式的新武器。">
   <meta property="og:image" content="assets/branding/rouge-hate-icon-512.png">
   <link rel="icon" type="image/png" sizes="64x64" href="assets/branding/rouge-hate-icon-64.png">
   <link rel="apple-touch-icon" sizes="256x256" href="assets/branding/rouge-hate-icon-256.png">
@@ -89,7 +89,7 @@
           <div class="intro-copy">
             <span class="chapter">DEEP SPACE PROTOCOL / 深空远征</span>
             <h1>把你的<span>妄想</span><br>变成武器</h1>
-            <p>展开约 12 分钟的深空远征。清除阶段首波后重构新武器，在迁徙潮、精英狩猎与星域首领之间完成构筑。</p>
+            <p>展开约 12 分钟的深空远征。清除第一阶段首波、击杀首领并直面终极意识，在四个战斗节点重构新武器。</p>
             <div class="profile-strip">
               <div><span>历史最高</span><strong id="profileBest">00:00</strong></div>
               <div><span>异常清除</span><strong id="profileKills">0</strong></div>
@@ -125,7 +125,7 @@
               <span class="eyebrow">ACTIVE ARSENAL</span>
               <h2>当前武器</h2>
             </div>
-              <span class="slot-count" id="slotCount">1 / 4</span>
+              <span class="slot-count" id="slotCount">0 / 5</span>
           </div>
           <div class="weapon-list" id="weaponList"></div>
         </section>
@@ -160,7 +160,7 @@
       <header>
         <span class="chapter">IDENTITY COMPILER / 战斗身份</span>
         <h2 id="archetypeTitle">选择本局流派</h2>
-        <p>流派决定角色外观、被动与 <kbd>SPACE</kbd> 专属技能；清除阶段首波后才会开放武器重构。</p>
+        <p>流派决定角色外观、被动与 <kbd>SPACE</kbd> 专属技能；第一阶段首波结束后开放第一次武器重构。</p>
       </header>
       <div class="archetype-presets archetype-template-grid" id="archetypePresets">
         <button class="active" data-concept="身穿恒星重甲、用巨剑顶住星兽迁徙的近战勇士" type="button"><i>⚔</i><span>WARRIOR</span><strong>星铠勇士</strong><small>恒星震荡 · 范围击退与短暂无敌</small></button>
@@ -221,25 +221,21 @@
           <div>
             <span class="chapter">STAGE FORGE / 阶段武器重构</span>
             <h2 id="forgeTitle">阶段 I · 构建第一攻击手段</h2>
-            <p>全局仅有三次武器重构，每次都会新增一种攻击方式，并比上一阶段拥有更高强度预算。</p>
+            <p>全局共有四次武器重构。没有预设模板：写下你的想法，AI 会将它变成新的攻击方式。</p>
           </div>
           <span class="budget-chip">预算 <strong id="budgetValue">66</strong></span>
         </header>
 
-        <div class="quick-wishes" id="quickWishes">
-          <button data-wish="一把贯穿五个敌人的巴雷特，威力巨大但射速很慢">重型巴雷特</button>
-          <button data-wish="四把燃烧飞剑围绕我旋转">燃烧飞剑</button>
-          <button data-wish="会爆炸并冻结敌人的蓝色激光">冰爆激光</button>
-        </div>
+        <div class="quick-wishes" id="quickWishes" hidden></div>
 
         <form class="wish-form" id="wishForm">
           <label for="wishInput">你的妄想</label>
           <div class="input-frame">
-            <textarea id="wishInput" maxlength="180" rows="3" placeholder="例如：给我一把每次命中都会分裂的冰霜巴雷特……" required></textarea>
+            <textarea id="wishInput" maxlength="180" rows="3" placeholder="直接写下你想要的武器、攻击行为和视觉效果；没有预设模板。" required></textarea>
             <span class="char-count"><b id="charCount">0</b>/180</span>
           </div>
           <div class="form-actions">
-            <button class="skip-button" type="button" id="skipButton">采用流派推荐方案</button>
+            <button class="skip-button" type="button" id="skipButton" hidden>无预设方案</button>
             <button class="forge-button" type="submit" id="forgeButton">
               <span class="button-icon">✦</span>
               <span>让武器成形</span>

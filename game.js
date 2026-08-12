@@ -133,7 +133,8 @@ const stages = [
 const forgeTiers = [
   { tier: 1, roman: "I", budget: 72, label: "第一件异想", hint: "稳定、清晰地建立第一种攻击循环" },
   { tier: 2, roman: "II", budget: 104, label: "第二件异想", hint: "补齐短板，或与第一件武器形成状态协同" },
-  { tier: 3, roman: "III", budget: 140, label: "最后的异想", hint: "高风险、高上限，用于击穿憎恨奇点" },
+  { tier: 3, roman: "III", budget: 140, label: "第三件异想", hint: "Boss 2 瓦解后的高阶攻击手段" },
+  { tier: 4, roman: "IV", budget: 184, label: "绝境异想", hint: "终极 Boss 登场 15 秒后的最后构建" },
 ];
 const openingWaveSizes = [8];
 const stageHealthScales = [1.08, 1.62, 2.75];
@@ -149,14 +150,6 @@ const roleSkills = {
   mage: { name: "星云坍缩", cooldown: 8.5, description: "牵引大范围敌人并施加冻结" },
   sniper: { name: "终焉星轨", cooldown: 7.8, description: "向最危险方向发射全屏贯穿射线" },
 };
-const roleRecommendedWishes = {
-  warrior: "一把能横扫大群敌人的星核巨剑，挥砍宽阔并有强击退",
-  assassin: "一对攻击极快的相位双匕，近距离连续暴击",
-  hunter: "一把发射剧毒追踪箭的异星猎弓，能够贯穿目标",
-  mage: "一根释放星云贯穿光束的法杖，命中会引发爆炸",
-  sniper: "一把贯穿五个敌人的狙，威力巨大但射速很慢",
-};
-
 const cosmicBestiary = {
   asteroid_mite: { name: "棘岩星螨", stage: 0, unlock: 0, weight: 24, behavior: "chaser", hp: 28, speed: 52, radius: 16, damage: 11, xp: 2, color: "#8f75c9", accent: "#d9c8ff", rank: "common" },
   azure_beetle: { name: "蓝晶甲虫", stage: 0, unlock: 0, weight: 20, behavior: "chaser", hp: 42, speed: 48, radius: 17, damage: 12, xp: 3, color: "#19bdf2", accent: "#8effff", rank: "common" },
@@ -338,7 +331,7 @@ const state = {
   victory: false,
   seenSpecies: new Set(),
   activeForgeTier: 1,
-  forgeOpened: [false, false, false],
+  forgeOpened: [false, false, false, false],
   openingWaveTier: 0,
   openingWaveRemaining: 0,
   encounterTriggered: Array(6).fill(false),
@@ -383,19 +376,20 @@ let synergyCache = null;
 const touch = { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0 };
 
 const rarityMeta = {
-  common: { label: "COMMON / 常规", color: "#d7d5dc" },
-  rare: { label: "RARE / 稀有", color: "#58e6ff" },
-  epic: { label: "EPIC / 史诗", color: "#a78bfa" },
-  legendary: { label: "MYTHIC / 质变", color: "#ffd166" },
+  common: { label: "COMMON / 普通", color: "#f2f2ef" },
+  uncommon: { label: "UNCOMMON / 优良", color: "#70df86" },
+  rare: { label: "RARE / 稀有", color: "#55aaff" },
+  epic: { label: "EPIC / 史诗", color: "#b47cff" },
+  legendary: { label: "LEGENDARY / 传说", color: "#ff9f43" },
 };
 
 const coreUpgrades = [
   { id: "damage", family: "漂流遗物 · 武器", title: "磨损的枪管", icon: "↗", rarity: "common", max: 6, description: "它已经打过很多仗。所有攻击伤害提高 15%。", apply: () => { bonuses.damage *= 1.15; } },
-  { id: "cooldown", family: "漂流遗物 · 时间", title: "提前两秒的表", icon: "⌁", rarity: "common", max: 6, description: "每根指针都很着急。攻击间隔缩短 9%。", apply: () => { bonuses.cooldown *= 0.91; } },
+  { id: "cooldown", family: "漂流遗物 · 时间", title: "提前两秒的表", icon: "⌁", rarity: "uncommon", max: 6, description: "每根指针都很着急。攻击间隔缩短 9%。", apply: () => { bonuses.cooldown *= 0.91; } },
   { id: "range", family: "漂流遗物 · 观测", title: "有裂缝的望远镜", icon: "⇥", rarity: "common", max: 5, description: "裂缝让远方看起来更近。射程与挥砍半径提高 12%。", apply: () => { bonuses.range *= 1.12; } },
-  { id: "vitality", family: "漂流遗物 · 肉身", title: "备用肺", icon: "+", rarity: "common", max: 4, description: "不知道原主人是谁。最大生命提高 20，并恢复 20。", apply: () => { player.maxHp += 20; player.hp = Math.min(player.maxHp, player.hp + 20); } },
+  { id: "vitality", family: "漂流遗物 · 肉身", title: "备用肺", icon: "+", rarity: "uncommon", max: 4, description: "不知道原主人是谁。最大生命提高 20，并恢复 20。", apply: () => { player.maxHp += 20; player.hp = Math.min(player.maxHp, player.hp + 20); } },
   { id: "movement", family: "漂流遗物 · 机动", title: "彗星鞋带", icon: "»", rarity: "common", max: 4, description: "系紧以后很难停下。移速 +10%，专属技能冷却 -8%。", apply: () => { bonuses.moveSpeed *= 1.10; bonuses.skillCooldown *= 0.92; } },
-  { id: "magnet", family: "漂流遗物 · 拾取", title: "装满铁屑的糖", icon: "◇", rarity: "common", max: 4, description: "甜得发苦。拾取范围扩大 45。", apply: () => { bonuses.magnet += 45; } },
+  { id: "magnet", family: "漂流遗物 · 拾取", title: "装满铁屑的糖", icon: "◇", rarity: "uncommon", max: 4, description: "甜得发苦。拾取范围扩大 45。", apply: () => { bonuses.magnet += 45; } },
   { id: "armor", family: "漂流遗物 · 肉身", title: "蜕下的甲壳", icon: "⬡", rarity: "rare", max: 4, description: "里面还残留着体温。受到伤害降低 8%。", apply: () => { bonuses.armor = Math.min(0.4, bonuses.armor + 0.08); } },
   { id: "critical", family: "漂流遗物 · 观测", title: "画歪的准星", icon: "✦", rarity: "rare", max: 4, description: "歪得刚刚好。暴击率提高 8%。", apply: () => { bonuses.crit += 0.08; } },
   { id: "projectiles", family: "漂流遗物 · 武器", title: "多出来的扳机", icon: "≋", rarity: "epic", max: 3, description: "没人知道它原本装在哪里。投射、连斩与环绕数量 +1。", apply: () => { bonuses.projectiles += 1; } },
@@ -725,7 +719,14 @@ function hasSynergy(id) {
 }
 
 function weaponMutation(weapon, mechanic) {
+  // Legacy save compatibility only. New AI evolutions use free-form effect graphs.
   return weapon?.mutations?.find((mutation) => mutation.mechanic === mechanic) || null;
+}
+
+function weaponEffectRules(weapon, trigger) {
+  return (weapon?.mutations || [])
+    .flatMap((mutation) => Array.isArray(mutation.effects) ? mutation.effects : [])
+    .filter((rule) => rule?.trigger === trigger && rule.action);
 }
 
 function mutationPower(scale) {
@@ -961,7 +962,7 @@ function resetGame() {
   state.victory = false;
   state.seenSpecies = new Set();
   state.activeForgeTier = 1;
-  state.forgeOpened = [false, false, false];
+  state.forgeOpened = [false, false, false, false];
   state.openingWaveTier = 0;
   state.openingWaveRemaining = 0;
   state.encounterTriggered = Array(6).fill(false);
@@ -1130,7 +1131,7 @@ function makeMiniStat(label, value) {
 
 function updateLoadoutUI() {
   ui.weaponList.replaceChildren(...weapons.map(createWeaponCard));
-  ui.slotCount.textContent = `${weapons.length} / 4`;
+  ui.slotCount.textContent = `${weapons.length} / 5`;
 }
 
 function updateSynergyUI() {
@@ -1529,7 +1530,7 @@ function spawnBoss(index) {
   enemies.push(boss);
   currentBoss = boss;
   state.bossSpawned[index] = true;
-  if (index === 2) state.finalBossForgeAt = state.time + 10;
+  if (index === 2) state.finalBossForgeAt = state.time + 15;
   const direction = compassDirection(angle);
   announce("THREAT DETECTED", `${template.name} · ${direction}侧接近`);
   addLog(`检测到高危意识体「${template.name}」，位于当前坐标${direction}侧。跟随屏幕箭头。`, true);
@@ -1762,6 +1763,13 @@ function fireMelee(weapon, damageScale = 1) {
 
 function updateOrbitWeapon(weapon, dt) {
   weapon.orbitAngle = (weapon.orbitAngle || 0) + dt * (1.25 + 150 / Math.max(80, weapon.range));
+  if (weaponEffectRules(weapon, "on_attack").length) {
+    weapon.graphAttackTimer = (weapon.graphAttackTimer || 0) - dt;
+    if (weapon.graphAttackTimer <= 0) {
+      weapon.graphAttackTimer = runtimeCooldown(weapon);
+      executeEffectRules("on_attack", weapon, { baseDamage: runtimeDamage(weapon) });
+    }
+  }
   weapon.orbitHits ||= new Map();
   weapon.orbitPositions = [];
   const count = runtimeCount(weapon);
@@ -1808,6 +1816,7 @@ function dispatchWeapon(weapon, damageScale = 1, scheduleMutations = true) {
   else if (weapon.delivery === "melee") fired = fireMelee(weapon, damageScale);
   else fired = fireProjectile(weapon, damageScale);
   if (!fired || !scheduleMutations) return fired;
+  executeEffectRules("on_attack", weapon, { baseDamage: runtimeDamage(weapon) * damageScale });
   if (weaponMutation(weapon, "echo")) {
     pendingAttacks.push({ at: state.time + .29, weapon, scale: mutationPower(.54), kind: "echo" });
   }
@@ -1989,9 +1998,143 @@ function updateProjectiles(dt) {
   projectiles = projectiles.filter((item) => !item.dead);
 }
 
-function addMutationZone(type, x, y, weapon) {
+const effectVisualColors = {
+  metal: "#b8c2ce", ember: "#ff713c", spore: "#70df86", frost: "#8fdcff",
+  lightning: "#76bfff", gravity: "#a98cff", blood: "#ff5d73", void: "#8a68e8",
+  blade: "#f2f2ef", star: "#ffb64d",
+};
+
+function effectOrigin(rule, context = {}) {
+  if (["hit_target", "around_hit"].includes(rule.target) && context.enemy) return { x: context.enemy.x, y: context.enemy.y };
+  const targetWeapon = { targeting: rule.target === "strongest" ? "strongest" : rule.target === "cluster" ? "cluster" : "nearest" };
+  const target = context.enemy || weaponTarget(targetWeapon, 760);
+  return rule.target === "self" || !target ? { x: player.x, y: player.y } : { x: target.x, y: target.y };
+}
+
+function applyGraphStatus(enemy, rule, weapon) {
+  const duration = Math.max(.25, Number(rule.duration) || 1.5) * bonuses.statusDuration;
+  const amount = Math.max(.05, Number(rule.amount) || .35);
+  if (rule.status === "burn") {
+    if (enemy.burnUntil <= state.time) enemy.burnTickAt = state.time + .35;
+    enemy.burnDamage = Math.max(enemy.burnDamage, runtimeDamage(weapon) * amount * .16);
+    enemy.burnUntil = Math.max(enemy.burnUntil, state.time + duration);
+    enemy.burnColor = effectVisualColors[rule.visual] || "#ff713c";
+    enemy.burnSource = weapon;
+  } else if (rule.status === "poison") {
+    if (enemy.poisonUntil <= state.time) { enemy.poisonTickAt = state.time + .5; enemy.poisonStacks = 0; }
+    enemy.poisonDamage = Math.max(enemy.poisonDamage, runtimeDamage(weapon) * amount * .13);
+    enemy.poisonUntil = Math.max(enemy.poisonUntil, state.time + duration);
+    enemy.poisonStacks = Math.min(5, (enemy.poisonStacks || 0) + 1);
+    enemy.poisonSource = weapon;
+  } else if (rule.status === "slow") {
+    enemy.slowPercent = Math.max(enemy.slowPercent, Math.min(.6, amount));
+    enemy.slowUntil = Math.max(enemy.slowUntil, state.time + duration);
+  } else if (rule.status === "mark") {
+    enemy.executionMarks = Math.min(8, (enemy.executionMarks || 0) + Math.max(1, Number(rule.count) || 1));
+  }
+}
+
+function spawnGraphProjectiles(rule, weapon, context = {}) {
+  const origin = effectOrigin(rule, context);
+  const targetWeapon = { targeting: rule.target === "strongest" ? "strongest" : rule.target === "cluster" ? "cluster" : "nearest" };
+  const target = context.enemy || weaponTarget(targetWeapon, 760, origin.x, origin.y);
+  const count = Math.max(1, Math.min(8, Number(rule.count) || 1));
+  const derived = {
+    ...weapon, mutations: [], delivery: "projectile",
+    trajectory: rule.trajectory === "inherit" ? weapon.trajectory : rule.trajectory,
+    targeting: targetWeapon.targeting, homing: rule.trajectory === "homing" ? 1 : weapon.homing,
+  };
+  const baseAngle = target ? Math.atan2(target.y - origin.y, target.x - origin.x) : Math.random() * Math.PI * 2;
+  for (let index = 0; index < count; index += 1) {
+    const radial = rule.trajectory === "radial";
+    const angle = radial ? index / count * Math.PI * 2 : baseAngle + (index - (count - 1) / 2) * .16;
+    const skyfall = rule.trajectory === "skyfall" && target;
+    projectiles.push({
+      x: skyfall ? target.x + (index - (count - 1) / 2) * 20 : origin.x,
+      y: skyfall ? target.y - 280 : origin.y,
+      angle: skyfall ? Math.PI / 2 : angle, baseAngle: angle, age: 0, wavePhase: index * 1.4,
+      speed: Math.max(240, weapon.projectile_speed || 380) * bonuses.projectileSpeed,
+      radius: Math.max(3, (weapon.projectile_size || 5) * bonuses.area * .82),
+      life: skyfall ? 1.25 : Math.max(.45, runtimeRange(weapon) / Math.max(240, weapon.projectile_speed || 380)),
+      damage: runtimeDamage(weapon) * mutationPower(Math.max(.08, Number(rule.amount) || .35)),
+      pierceLeft: Math.max(0, Math.min(7, (weapon.pierce || 0) + (rule.action === "modify_projectile" ? Number(rule.count) || 0 : 0))),
+      ricochetsLeft: 0, weapon: derived, color: effectVisualColors[rule.visual] || weapon.color,
+      hitIds: new Set(context.enemy ? [context.enemy.id] : []), mutationChild: true, canProc: false, dead: false,
+    });
+  }
+  burst(origin.x, origin.y, effectVisualColors[rule.visual] || weapon.color, Math.min(12, count + 3), 75);
+}
+
+function executeEffectRules(trigger, weapon, context = {}) {
+  const rules = weaponEffectRules(weapon, trigger);
+  if (!rules.length) return;
+  const stripped = { ...weapon, mutations: [], crit_chance: 0, explosion_radius: 0, burn_damage: 0, poison_damage: 0, slow_percent: 0 };
+  for (const rule of rules) {
+    const ruleChance = Number(rule.chance);
+    if (Math.random() > (Number.isFinite(ruleChance) ? ruleChance : 1)) continue;
+    const origin = effectOrigin(rule, context);
+    const radius = Math.max(24, Number(rule.radius) || 80) * bonuses.area;
+    const color = effectVisualColors[rule.visual] || weapon.color;
+    if (rule.action === "repeat_attack") {
+      const repeats = Math.max(1, Math.min(8, Number(rule.count) || 1));
+      for (let index = 0; index < repeats; index += 1) pendingAttacks.push({
+        at: state.time + Math.max(.04, Number(rule.delay) || .12) * (index + 1), weapon, scale: mutationPower(Math.max(.08, Number(rule.amount) || .4)), kind: "graph_repeat",
+      });
+      continue;
+    }
+    if (["spawn_projectiles", "modify_projectile"].includes(rule.action)) {
+      spawnGraphProjectiles(rule, weapon, context);
+      continue;
+    }
+    const nearby = enemies
+      .filter((enemy) => !enemy.dead && Math.hypot(enemy.x - origin.x, enemy.y - origin.y) <= radius + enemy.radius)
+      .sort((a, b) => Math.hypot(a.x - origin.x, a.y - origin.y) - Math.hypot(b.x - origin.x, b.y - origin.y));
+    if (rule.action === "area_damage") {
+      for (const enemy of nearby) {
+        const dx = enemy.x - origin.x; const dy = enemy.y - origin.y; const distance = Math.hypot(dx, dy) || 1;
+        damageEnemy(enemy, runtimeDamage(weapon) * mutationPower(Math.max(.08, Number(rule.amount) || .35)), stripped, dx / distance, dy / distance, false);
+      }
+    } else if (rule.action === "chain") {
+      const count = Math.max(1, Math.min(8, Number(rule.count) || 2));
+      let from = context.enemy || { x: origin.x, y: origin.y };
+      for (const enemy of nearby.filter((item) => item.id !== context.enemy?.id).slice(0, count)) {
+        effects.push({ type: "beam", x1: from.x, y1: from.y, x2: enemy.x, y2: enemy.y, width: 2.2, color, life: .16, maxLife: .16, source: "weapon", style: rule.visual });
+        damageEnemy(enemy, runtimeDamage(weapon) * mutationPower(Math.max(.08, Number(rule.amount) || .28)), stripped, 0, 0, false);
+        from = enemy;
+      }
+    } else if (rule.action === "create_zone") {
+      addMutationZone(rule.status === "none" ? "arcane" : rule.status, origin.x, origin.y, weapon, rule);
+    } else if (rule.action === "apply_status") {
+      for (const enemy of (nearby.length ? nearby : context.enemy ? [context.enemy] : [])) applyGraphStatus(enemy, rule, weapon);
+    } else if (rule.action === "pull") {
+      for (const enemy of nearby) {
+        if (enemy.boss) continue;
+        const dx = enemy.x - origin.x; const dy = enemy.y - origin.y; const distance = Math.hypot(dx, dy) || 1;
+        const pull = 8 + Math.max(.05, Number(rule.amount) || .35) * 32;
+        enemy.x -= dx / distance * pull; enemy.y -= dy / distance * pull;
+      }
+    } else if (rule.action === "heal") {
+      const healing = Math.min(player.maxHp * .08, Math.max(.5, (context.baseDamage || runtimeDamage(weapon)) * Math.max(.02, Number(rule.amount) || .08)));
+      player.hp = Math.min(player.maxHp, player.hp + healing);
+      floatText(player.x, player.y - 28, `+${healing.toFixed(1)}`, color, true);
+    } else if (rule.action === "execute" && context.enemy && !context.enemy.boss) {
+      const threshold = Math.min(.35, Math.max(.04, Number(rule.amount) || .12));
+      if (context.enemy.hp > 0 && context.enemy.hp / context.enemy.maxHp <= threshold) context.enemy.hp = 0;
+    }
+    if (rule.status !== "none" && !["create_zone", "apply_status"].includes(rule.action)) {
+      for (const enemy of nearby) applyGraphStatus(enemy, rule, weapon);
+    }
+    effects.push({ type: "ring", x: origin.x, y: origin.y, radius, color, life: .3, maxLife: .3, style: rule.visual });
+  }
+}
+
+function addMutationZone(type, x, y, weapon, rule = null) {
   if (mutationZones.length >= 36) mutationZones.shift();
-  mutationZones.push({ type, x, y, weapon, radius: (type === "poison" ? 76 : 68) * bonuses.area, expires: state.time + 3.2, tickAt: 0 });
+  mutationZones.push({
+    type, x, y, weapon, rule,
+    radius: (rule?.radius || (type === "poison" ? 76 : 68)) * bonuses.area,
+    expires: state.time + (rule?.duration || 3.2), tickAt: 0,
+  });
 }
 
 function applyMutationHitEffects(enemy, baseDamage, weapon) {
@@ -2091,7 +2234,7 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
   if (state.isMoving) conditional *= 1 + bonuses.movingDamage;
   let damage = baseDamage * conditional * (critical ? 1.85 : 1) * (thermal ? 1.25 : 1) * (afflicted ? 1 + bonuses.venomAmp : 1) * (chilled ? 1 + bonuses.shatter : 1) * (enemy.shielded ? .68 : 1);
   enemy.hp -= damage;
-  if (enemy.bossIndex === 2 && !state.forgeOpened[2]) enemy.hp = Math.max(enemy.hp, enemy.maxHp * .42);
+  if (enemy.bossIndex === 2 && !state.forgeOpened[3]) enemy.hp = Math.max(enemy.hp, enemy.maxHp * .42);
   let executed = false;
   if (!enemy.boss && bonuses.execute > 0 && enemy.hp > 0 && enemy.hp / enemy.maxHp <= bonuses.execute) {
     damage += enemy.hp;
@@ -2125,7 +2268,10 @@ function damageEnemy(enemy, baseDamage, weapon, directionX = 0, directionY = 0, 
     enemy.poisonStacks = Math.min(5, (enemy.poisonStacks || 0) + 1);
     enemy.poisonSource = weapon;
   }
-  if (canProc) applyMutationHitEffects(enemy, baseDamage, weapon);
+  if (canProc) {
+    executeEffectRules("on_hit", weapon, { enemy, baseDamage });
+    applyMutationHitEffects(enemy, baseDamage, weapon);
+  }
   if (canProc && bonuses.chainTargets > 0 && Math.random() < bonuses.chainChance) {
     const candidates = enemies
       .filter((target) => !target.dead && target.id !== enemy.id && Math.hypot(target.x - enemy.x, target.y - enemy.y) <= 175)
@@ -2229,6 +2375,7 @@ function killEnemy(enemy, weapon = null, proc = {}) {
 
   const allowDeathProcs = proc.canProc !== false && Boolean(weapon || enemy.burnSource || enemy.poisonSource);
   const sourceWeapon = weapon || enemy.poisonSource || enemy.burnSource || weapons[0];
+  if (allowDeathProcs && sourceWeapon) executeEffectRules("on_kill", sourceWeapon, { enemy, baseDamage: runtimeDamage(sourceWeapon) });
   if (allowDeathProcs && sourceWeapon && weaponMutation(sourceWeapon, "nova")) {
     const count = 6;
     for (let index = 0; index < count; index += 1) {
@@ -2340,8 +2487,9 @@ function killEnemy(enemy, weapon = null, proc = {}) {
     if (enemy.bossIndex === 2) {
       player.invulnerable = 2;
       finishRun(true);
-    } else if (enemy.bossIndex === 0 && !state.forgeOpened[1]) {
-      queueReward("forge", 2);
+    } else if (enemy.bossIndex < 2) {
+      const nextForgeTier = enemy.bossIndex + 2;
+      if (!state.forgeOpened[nextForgeTier - 1]) queueReward("forge", nextForgeTier);
     }
   }
 }
@@ -2441,13 +2589,15 @@ function updateMutationZones() {
       ...zone.weapon, mutations: [], crit_chance: 0, explosion_radius: 0,
       burn_damage: zone.type === "burn" ? Math.max(5, (zone.weapon.burn_damage || 0) + 3) : 0,
       poison_damage: zone.type === "poison" ? Math.max(5, (zone.weapon.poison_damage || 0) + 3) : 0,
-      slow_percent: 0, knockback: 0,
+      slow_percent: zone.type === "slow" ? Math.max(.2, zone.rule?.amount || 0) : 0, knockback: 0,
     };
     for (const enemy of enemies) {
       if (enemy.dead || Math.hypot(enemy.x - zone.x, enemy.y - zone.y) > zone.radius + enemy.radius) continue;
-      damageEnemy(enemy, runtimeDamage(zone.weapon) * mutationPower(.08), zoneWeapon, 0, 0, false);
+      damageEnemy(enemy, runtimeDamage(zone.weapon) * mutationPower(zone.rule?.amount || .08), zoneWeapon, 0, 0, false);
+      if (zone.rule && zone.rule.status !== "none") applyGraphStatus(enemy, zone.rule, zone.weapon);
     }
-    effects.push({ type: "ring", x: zone.x, y: zone.y, radius: zone.radius, color: zone.type === "burn" ? "#ff7a38" : "#67e86f", life: .5, maxLife: .5, style: zone.type === "burn" ? "embers" : "spores" });
+    const color = zone.rule ? effectVisualColors[zone.rule.visual] : zone.type === "burn" ? "#ff7a38" : "#67e86f";
+    effects.push({ type: "ring", x: zone.x, y: zone.y, radius: zone.radius, color, life: .5, maxLife: .5, style: zone.rule?.visual || (zone.type === "burn" ? "embers" : "spores") });
   }
 
   mutationZones = mutationZones.filter((zone) => zone.expires > state.time);
@@ -2489,7 +2639,7 @@ function updateEnemies(dt) {
       burst(enemy.x, enemy.y, "#67e86f", 3, 38);
       effects.push({ type: "status", status: "poison", x: enemy.x, y: enemy.y, radius: enemy.radius + 9, color: "#67e86f", life: .48, maxLife: .48 });
     }
-    if (enemy.bossIndex === 2 && !state.forgeOpened[2]) enemy.hp = Math.max(enemy.hp, enemy.maxHp * .42);
+    if (enemy.bossIndex === 2 && !state.forgeOpened[3]) enemy.hp = Math.max(enemy.hp, enemy.maxHp * .42);
     if (enemy.hp <= 0) {
       killEnemy(enemy, enemy.poisonUntil > state.time ? enemy.poisonSource : enemy.burnSource || weapons[0], { canProc: true });
       continue;
@@ -2772,17 +2922,17 @@ function update(dt) {
     }
   }
   for (let index = 0; index < BOSS_TIMES.length; index += 1) {
-    const forgeReady = index === 0 ? state.forgeOpened[0] : index === 1 ? state.forgeOpened[1] : true;
+    const forgeReady = Boolean(state.forgeOpened[index]);
     if (state.time >= BOSS_TIMES[index] && index <= state.stageIndex && state.openingWaveTier === 0 && forgeReady && !state.bossSpawned[index] && !currentBoss) {
       spawnBoss(index);
       break;
     }
   }
-  if (currentBoss?.bossIndex === 2 && state.finalBossForgeAt > 0 && state.time >= state.finalBossForgeAt && !state.forgeOpened[2]) {
+  if (currentBoss?.bossIndex === 2 && state.finalBossForgeAt > 0 && state.time >= state.finalBossForgeAt && !state.forgeOpened[3]) {
     state.finalBossForgeAt = 0;
     announce("LAST FORGE", "终极意识暴露弱点 · 最后一次武器构建");
-    addLog("憎恨奇点现身 10 秒：最后一次武器重构强制接入。", true);
-    queueReward("forge", 3);
+    addLog("憎恨奇点现身 15 秒：第四次武器重构强制接入。", true);
+    queueReward("forge", 4);
   }
 
   updateWeapons(dt);
@@ -4111,27 +4261,8 @@ function closeReward() {
   }
 }
 
-function forgeSuggestions(tier) {
-  const role = selectedArchetype?.role || "sniper";
-  if (tier === 1) return [
-    ["职业推荐", roleRecommendedWishes[role]],
-    ["清群弹幕", "一件能同时清理大群弱小星兽的多重投射武器"],
-    ["近身防线", "一组环绕自身并持续切割靠近敌人的防御武器"],
-  ];
-  if (tier === 2) return [
-    ["冰火协同", "一件会冻结敌人并引发燃烧爆炸的中程武器"],
-    ["贯穿爆破", "能够贯穿敌群并在最后一个目标处爆炸的重型武器"],
-    ["追踪卫星", "三台高速环绕、自动追踪漏网敌人的战斗卫星"],
-  ];
-  return [
-    ["终局重炮", "发射微型恒星的终局重炮，极慢射速换取巨额范围伤害"],
-    ["奇点领域", "周期制造引力奇点，把全屏敌人拉向中心并持续瓦解"],
-    ["灭绝光束", "一道超远距离的憎恨净化光束，贯穿并处决整条路径"],
-  ];
-}
-
 function openForge(tier = state.stageIndex + 1) {
-  const forge = forgeTiers[Math.max(0, Math.min(2, tier - 1))];
+  const forge = forgeTiers[Math.max(0, Math.min(3, tier - 1))];
   state.paused = true;
   state.forging = true;
   state.rewardOpen = true;
@@ -4143,19 +4274,14 @@ function openForge(tier = state.stageIndex + 1) {
   ui.forgeTitle.textContent = `阶段 ${forge.roman} · ${forge.label}`;
   ui.budget.textContent = String(forge.budget);
   ui.wishForm.hidden = false;
-  ui.quickWishes.hidden = false;
+  ui.quickWishes.hidden = true;
+  ui.skip.hidden = true;
   ui.forgeLoading.hidden = true;
   ui.weaponResult.hidden = true;
   ui.forgeError.hidden = true;
   ui.forgeButton.disabled = false;
   ui.wishInput.value = "";
   ui.charCount.textContent = "0";
-  const suggestionButtons = [...ui.quickWishes.querySelectorAll("button[data-wish]")];
-  forgeSuggestions(forge.tier).forEach(([label, wish], index) => {
-    if (!suggestionButtons[index]) return;
-    suggestionButtons[index].textContent = label;
-    suggestionButtons[index].dataset.wish = wish;
-  });
   setTimeout(() => ui.wishInput.focus(), 60);
   addLog(`阶段 ${forge.roman} 武器重构开放：${forge.hint}。`, true);
 }
@@ -4202,10 +4328,10 @@ function ownedBuildTags() {
 function weightedUpgrade(pool, ownedTags, artifact = false) {
   if (!pool.length) return null;
   const weights = pool.map((upgrade) => {
-    const rarityWeight = { common: 100, rare: 55, epic: 24, legendary: 7 }[upgrade.rarity] || 50;
+    const rarityWeight = { common: 100, uncommon: 72, rare: 48, epic: 22, legendary: 7 }[upgrade.rarity] || 50;
     let weight = upgrade.weight || rarityWeight;
     if (tagsForUpgrade(upgrade).some((tag) => ownedTags.has(tag))) weight *= 1.75;
-    if (artifact) weight *= upgrade.rarity === "legendary" ? 5 : upgrade.rarity === "epic" ? 2.5 : upgrade.rarity === "rare" ? 1.25 : .12;
+    if (artifact) weight *= upgrade.rarity === "legendary" ? 5 : upgrade.rarity === "epic" ? 2.5 : upgrade.rarity === "rare" ? 1.25 : upgrade.rarity === "uncommon" ? .35 : .12;
     return Math.max(.1, weight);
   });
   let roll = Math.random() * weights.reduce((sum, weight) => sum + weight, 0);
@@ -4283,25 +4409,12 @@ function openUpgrade(type = "upgrade") {
   addLog(type === "artifact" ? "Boss 的残骸里还留着能用的东西。" : `等级提升至 ${state.level}，新的东西找上了你。`, true);
 }
 
-const mutationMechanicMeta = {
-  split: ["虫卵弹", "✣"], return: ["归巢骨钩", "↩"], ricochet: ["猎犬子弹", "⌁"],
-  chain: ["雷鳗脊骨", "ϟ"], nova: ["死星花", "✺"], echo: ["昨天的枪声", "◫"],
-  fork: ["三棱镜", "⋔"], crescent: ["飞出去的月牙", "☾"], aftershock: ["第二次心跳", "◎"],
-  orbit_salvo: ["发怒的卫星", "✥"],
-  seeking: ["闻血飞刃", "◈"], poison_cloud: ["绿肺孢子", "☣"], burning_ground: ["余烬脚印", "♨"],
-  frost_shatter: ["碎冰牙床", "❄"], gravity_well: ["沉星胃袋", "◉"], barrage: ["三拍心脏", "≋"],
-  spiral_dance: ["螺旋鳍", "@"], starfall: ["倒悬流星", "↓"], phantom_double: ["背面幽灵", "◫"],
-  blood_drain: ["吸血水蛭", "♥"], execution_mark: ["断头刻痕", "◐"], tether: ["脐带电索", "⌁"],
-  minefield: ["寄生雷卵", "※"], time_freeze: ["停摆眼球", "◷"], swarm: ["幼虫蜂群", "✣"],
-  wall: ["横生骨墙", "═"], drill: ["穿骨钻头", "⇥"], black_hole: ["无底瞳孔", "●"],
-};
-
 function renderMutationLoading() {
   ui.upgradeOptions.replaceChildren();
   for (let index = 0; index < 3; index += 1) {
     const card = document.createElement("article");
     card.className = "upgrade-card mutation-loading-card";
-    card.style.setProperty("--rarity-color", ["#58e6ff", "#a78bfa", "#ffd166"][index]);
+    card.style.setProperty("--rarity-color", "#b8c2ce");
     const icon = document.createElement("span");
     icon.className = "upgrade-icon";
     icon.textContent = "梦";
@@ -4319,28 +4432,6 @@ function renderMutationLoading() {
   }
 }
 
-function mutationWishSuggestions() {
-  const suggestions = [];
-  if (weapons.some((weapon) => weapon.delivery === "melee")) {
-    suggestions.push(["剑气外放", "让近战挥砍甩出能飞行的月牙刃光"]);
-  }
-  if (weapons.some((weapon) => weapon.delivery === "beam")) {
-    suggestions.push(["棱镜折射", "让光束被旧棱镜分成三道不同角度"]);
-  }
-  if (weapons.some((weapon) => weapon.delivery === "aura")) {
-    suggestions.push(["余波心跳", "让领域脉冲结束后在原地再跳一次"]);
-  }
-  if (weapons.some((weapon) => weapon.delivery === "orbit")) {
-    suggestions.push(["卫星齐射", "让环绕武器周期性向外喷出星屑"]);
-  }
-  suggestions.push(
-    ["连锁闪电", "让命中的伤口向附近敌人钻出电弧"],
-    ["弹体分裂", "让主弹命中后孵出两枚侧向子弹"],
-    ["死亡开花", "让被击杀的目标向四周喷出星屑"],
-  );
-  return suggestions.slice(0, 3);
-}
-
 function renderMutationWishForm(round = state.mutationRound || 1) {
   currentMutationChoices = [];
   ui.upgradeOptions.replaceChildren();
@@ -4351,7 +4442,7 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
 
   const panel = document.createElement("article");
   panel.className = "mutation-wish-panel";
-  panel.style.setProperty("--rarity-color", "#58e6ff");
+  panel.style.setProperty("--rarity-color", "#b8c2ce");
 
   const heading = document.createElement("div");
   heading.className = "mutation-wish-heading";
@@ -4370,16 +4461,6 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
     weaponRow.append(chip);
   }
 
-  const quickRow = document.createElement("div");
-  quickRow.className = "mutation-wish-quick";
-  for (const [labelText, wish] of mutationWishSuggestions()) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.mutationWish = wish;
-    button.textContent = labelText;
-    quickRow.append(button);
-  }
-
   const form = document.createElement("form");
   form.className = "mutation-wish-form";
   form.dataset.mutationWishForm = "true";
@@ -4390,7 +4471,7 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
   textarea.rows = 3;
   textarea.required = true;
   textarea.dataset.mutationWishInput = "true";
-  textarea.placeholder = "例如：让巨剑挥出能飞回来的红色月牙，命中后再爆出星屑";
+  textarea.placeholder = "直接描述你想要的攻击变化；没有模板，也不需要套用关键词。";
   const count = document.createElement("span");
   count.className = "char-count";
   const countValue = document.createElement("b");
@@ -4407,7 +4488,7 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
   actions.append(submit);
   form.append(frame, actions);
 
-  panel.append(heading, weaponRow, quickRow, form);
+  panel.append(heading, weaponRow, form);
   ui.upgradeOptions.append(panel);
   setTimeout(() => textarea.focus(), 60);
 }
@@ -4480,24 +4561,23 @@ function renderMutationChoices() {
   ui.upgradeOptions.replaceChildren();
   ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」形成了三种攻击形态，选择一个醒来后仍会存在的结果。`;
   currentMutationChoices.forEach((choice, index) => {
-    const [mechanicLabel, glyph] = mutationMechanicMeta[choice.mechanic] || [choice.mechanic, "AI"];
     const card = document.createElement("button");
     card.type = "button";
     card.className = "upgrade-card mutation-card";
     card.dataset.mutationIndex = String(index);
-    card.style.setProperty("--rarity-color", choice.accent_color);
+    card.style.setProperty("--rarity-color", "#b8c2ce");
     const number = document.createElement("span");
     number.className = "upgrade-number";
     number.textContent = `0${index + 1}`;
     const icon = document.createElement("span");
     icon.className = "upgrade-icon";
-    icon.textContent = glyph;
+    icon.textContent = "AI";
     const rarity = document.createElement("span");
     rarity.className = "upgrade-rarity";
-    rarity.textContent = "WEAPON DREAM / 形态异变";
+    rarity.textContent = "AI FORGE / 金属异变";
     const family = document.createElement("span");
     family.className = "upgrade-family";
-    family.textContent = `改造 ${choice.target_name} · ${mechanicLabel}`;
+    family.textContent = `改造 ${choice.target_name} · 动态效果组合`;
     const title = document.createElement("h3");
     title.textContent = choice.title;
     const description = document.createElement("p");
@@ -4534,7 +4614,8 @@ function selectMutation(index) {
   if (!choice || !weapon) return;
   weapon.mutations ||= [];
   weapon.mutations.push({
-    mechanic: choice.mechanic, title: choice.title, color: choice.accent_color,
+    title: choice.title, description: choice.description, color: choice.accent_color,
+    effects: Array.isArray(choice.effects) ? choice.effects.map((rule) => ({ ...rule })) : [],
     round: choice.mutation_round || state.mutationRound,
   });
   if (choice.tradeoff === "damage_down") weapon.mutationDamageScale *= .88;
@@ -4652,7 +4733,7 @@ function rerollUpgrades() {
 
 function showForgeForm() {
   ui.wishForm.hidden = false;
-  ui.quickWishes.hidden = false;
+  ui.quickWishes.hidden = true;
   ui.forgeLoading.hidden = true;
   ui.weaponResult.hidden = true;
   ui.forgeError.hidden = true;
@@ -4777,8 +4858,8 @@ function acceptWeapon() {
   previewWeapon.forged = true;
   previewWeapon.level = state.activeForgeTier;
   previewWeapon.forgeTier = state.activeForgeTier;
-  if (weapons.length >= 4) {
-    addLog("四种攻击手段已全部接入，本次重复重构被拒绝。", true);
+  if (weapons.length >= 5) {
+    addLog("初始武器与四次重构已全部接入，本次重复重构被拒绝。", true);
     closeForge();
     return;
   }
@@ -4796,15 +4877,6 @@ function acceptWeapon() {
   updateLoadoutUI();
   updateSynergyUI();
   closeForge();
-}
-
-function useRecommendedWeapon() {
-  const role = selectedArchetype?.role || "sniper";
-  const wish = roleRecommendedWishes[role];
-  ui.wishInput.value = wish;
-  ui.charCount.textContent = String(wish.length);
-  ui.forgeButton.disabled = true;
-  generateWeapon(wish);
 }
 
 async function checkApi() {
@@ -4952,13 +5024,6 @@ ui.upgradeOptions.addEventListener("submit", (event) => {
 });
 ui.reroll.addEventListener("click", rerollUpgrades);
 ui.wishInput.addEventListener("input", () => { ui.charCount.textContent = String(ui.wishInput.value.length); });
-ui.quickWishes.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-wish]");
-  if (!button) return;
-  ui.wishInput.value = button.dataset.wish;
-  ui.charCount.textContent = String(ui.wishInput.value.length);
-  ui.wishInput.focus();
-});
 ui.wishForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const wish = ui.wishInput.value.trim();
@@ -4966,7 +5031,6 @@ ui.wishForm.addEventListener("submit", (event) => {
   ui.forgeButton.disabled = true;
   generateWeapon(wish);
 });
-ui.skip.addEventListener("click", useRecommendedWeapon);
 ui.retry.addEventListener("click", showForgeForm);
 ui.accept.addEventListener("click", acceptWeapon);
 

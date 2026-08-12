@@ -30,15 +30,18 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertRegex(weapon["color"], r"^#[0-9a-fA-F]{6}$")
         self.assertIsInstance(adjustments, list)
 
-    def test_explicit_tracking_flying_sword_is_never_rewritten_as_orbit(self):
+    def test_ai_authored_tracking_flying_sword_semantics_are_preserved(self):
         raw = server.offline_weapon("自动追踪敌人的飞剑", level=4)
-        raw.update(delivery="orbit", trajectory="straight", homing=0)
+        raw.update(
+            delivery="projectile", visual_form="blade", trajectory="homing", homing=.96,
+            behavior_summary="飞剑离开角色并主动追击敌人。",
+        )
         weapon, _ = server.rebalance_weapon(raw, level=4, forge_tier=2, wish="自动追踪敌人的飞剑")
         self.assertEqual(weapon["delivery"], "projectile")
         self.assertEqual(weapon["visual_form"], "blade")
         self.assertEqual(weapon["trajectory"], "homing")
-        self.assertGreaterEqual(weapon["homing"], .92)
-        self.assertIn("不会固定环绕", weapon["behavior_summary"])
+        self.assertEqual(weapon["homing"], .96)
+        self.assertIn("主动追击", weapon["behavior_summary"])
         self.assertLessEqual(weapon["balance_score"], weapon["budget"])
 
     def test_poison_and_fire_are_separate_numeric_statuses(self):
@@ -57,12 +60,12 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertTrue(adjustments)
         self.assertLessEqual(weapon["balance_score"], weapon["budget"])
 
-    def test_three_stage_forge_bands_are_strictly_increasing(self):
+    def test_four_forge_bands_are_strictly_increasing(self):
         raw = server.offline_weapon("稳定的星尘步枪", level=1)
-        weapons = [server.rebalance_weapon(raw, level=1, forge_tier=tier)[0] for tier in (1, 2, 3)]
-        self.assertEqual([weapon["budget"] for weapon in weapons], [72.0, 104.0, 140.0])
-        self.assertLess(weapons[0]["balance_score"], weapons[1]["balance_score"])
-        self.assertLess(weapons[1]["balance_score"], weapons[2]["balance_score"])
+        weapons = [server.rebalance_weapon(raw, level=1, forge_tier=tier)[0] for tier in (1, 2, 3, 4)]
+        self.assertEqual([weapon["budget"] for weapon in weapons], [72.0, 104.0, 140.0, 184.0])
+        for earlier, later in zip(weapons, weapons[1:]):
+            self.assertLess(earlier["balance_score"], later["balance_score"])
         for tier, weapon in enumerate(weapons, 1):
             floor = server.FORGE_TIER_BUDGETS[tier] * server.FORGE_TIER_FLOORS[tier]
             self.assertGreaterEqual(weapon["balance_score"], floor - 0.2)
@@ -159,44 +162,45 @@ class WeaponCompilerTests(unittest.TestCase):
             set(server.MUTATION_SCHEMA["required"]),
         )
         weapons = [server.rebalance_weapon(server.offline_weapon("星尘步枪", 2), 2, 1)[0]]
-        raw = server.offline_mutations(weapons, ["ballistic", "precision"], 1)
+        raw = server.offline_mutations(weapons, ["ballistic", "precision"], 1, "让攻击像活着的星鱼一样追猎")
         choices = server.sanitize_mutation_choices(raw, weapons, 1)
         self.assertEqual(len(choices), 3)
-        self.assertEqual(len({choice["mechanic"] for choice in choices}), 3)
+        self.assertEqual(len({json.dumps(choice["effects"], sort_keys=True) for choice in choices}), 3)
         for choice in choices:
             self.assertEqual(choice["target_index"], 0)
-            self.assertIn(choice["mechanic"], server.MUTATION_COMPATIBILITY["projectile"])
+            self.assertTrue(choice["effects"])
+            self.assertNotIn("mechanic", choice)
+        choice_schema = server.MUTATION_SCHEMA["properties"]["choices"]["items"]
+        effect_schema = choice_schema["properties"]["effects"]["items"]
+        self.assertEqual(set(effect_schema["properties"]), set(effect_schema["required"]))
 
-    def test_mutation_sanitizer_preserves_valid_cross_delivery_semantics_and_repairs_duplicates(self):
-        weapons = [{"name": "折光裁决", "delivery": "beam", "mutations": [{"mechanic": "fork"}]}]
-        invalid = {"choices": [{
-            "target_index": 3,
-            "evolution_name": "越界造物",
-            "title": "非法分裂",
-            "description": "不应被接受",
-            "mechanic": "split",
-            "accent_color": "not-a-color",
-            "tradeoff": "none",
-            "tradeoff_text": "无",
-            "tags": ["测试"],
-        }] * 3}
-        choices = server.sanitize_mutation_choices(invalid, weapons, 2)
-        mechanics = [choice["mechanic"] for choice in choices]
-        self.assertEqual(len(set(mechanics)), 3)
-        self.assertEqual(mechanics[0], "split")
-        self.assertNotIn("fork", mechanics)
+    def test_mutation_sanitizer_preserves_ai_copy_and_valid_effect_graphs(self):
+        weapons = [{"name": f"武器{i}", "delivery": "beam", "mutations": []} for i in range(5)]
+        rule = {
+            "trigger": "on_hit", "action": "spawn_projectiles", "target": "strongest",
+            "trajectory": "homing", "status": "mark", "visual": "blade", "amount": .42,
+            "count": 4, "radius": 96, "delay": .1, "duration": 2.4, "chance": .85,
+        }
+        raw = {"choices": [{
+            "target_index": 4,
+            "evolution_name": f"自由造物{i}",
+            "title": f"玩家想法变体{i}",
+            "description": f"第{i}种完全由 AI 写出的攻击行为",
+            "effects": [{**rule, "count": i + 1}],
+            "accent_color": "not-a-color" if i == 0 else "#123abc",
+            "tradeoff": "none", "tradeoff_text": "由 AI 决定", "tags": ["测试"],
+        } for i in range(3)]}
+        choices = server.sanitize_mutation_choices(raw, weapons, 2)
         self.assertTrue(all(choice["accent_color"].startswith("#") for choice in choices))
         self.assertTrue(all(choice["mutation_round"] == 2 for choice in choices))
-        self.assertEqual(choices[0]["title"], "非法分裂")
-        self.assertTrue(all(
-            choice["title"] == server.MUTATION_DEFAULTS[choice["mechanic"]][0]
-            for choice in choices[1:]
-        ))
+        self.assertEqual([choice["title"] for choice in choices], [f"玩家想法变体{i}" for i in range(3)])
+        self.assertEqual([choice["effects"][0]["count"] for choice in choices], [1, 2, 3])
+        self.assertTrue(all(choice["target_index"] == 4 for choice in choices))
 
-    def test_mutation_openai_context_exposes_rich_shared_attack_grammar(self):
+    def test_mutation_openai_context_exposes_composable_effect_language_without_catalogue(self):
         weapons = [{
             "name": "相位双匕", "delivery": "melee", "visual_form": "daggers",
-            "tags": ["近战"], "mutations": [{"mechanic": "chain"}],
+            "tags": ["近战"], "mutations": [{"title": "旧梦", "description": "一次旧异变", "effects": []}],
         }]
         with patch("server.call_structured_openai", return_value={"choices": []}) as mocked:
             server.call_mutation_openai(
@@ -209,25 +213,15 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertIs(args[2], server.MUTATION_SCHEMA)
         self.assertEqual(args[3], "attack_mutation_choices")
         self.assertEqual(context["mutation_round"], 2)
-        self.assertEqual(context["weapons"][0]["existing_mutations"], ["chain"])
-        self.assertEqual(
-            context["weapons"][0]["compatible_mechanics"],
-            server.MUTATION_COMPATIBILITY["melee"],
-        )
-        self.assertIn("split", context["weapons"][0]["compatible_mechanics"])
-        self.assertIn("poison_cloud", context["weapons"][0]["compatible_mechanics"])
-        self.assertIn("black_hole", context["weapons"][0]["compatible_mechanics"])
-        self.assertGreaterEqual(len(context["weapons"][0]["compatible_mechanics"]), 28)
+        self.assertEqual(context["weapons"][0]["existing_evolutions"][0]["title"], "旧梦")
+        self.assertIs(context["effect_language"], server.EFFECT_LANGUAGE)
+        self.assertNotIn("mechanic_dictionary", context)
+        self.assertNotIn("compatible_mechanics", context["weapons"][0])
 
-    def test_mutation_copy_rejects_synthetic_vocabulary_and_long_titles(self):
-        self.assertEqual(server.mutation_copy("量子超频协议", "虫卵弹", 7, title=True), "虫卵弹")
-        self.assertEqual(server.mutation_copy("一个长得明显不像卡名的标题", "死星花", 7, title=True), "死星花")
-        self.assertEqual(server.mutation_copy("骨头开花", "死星花", 7, title=True), "骨头开花")
-        for title, description, *_ in server.MUTATION_DEFAULTS.values():
-            self.assertLessEqual(len(title), 7)
-            self.assertFalse(any(
-                word in title + description for word in server.MUTATION_BANNED_VOCABULARY
-            ))
+    def test_mutation_copy_keeps_ai_language_without_vocabulary_filters(self):
+        self.assertEqual(server.mutation_copy("量子超频协议", "后备", 16, title=True), "量子超频协议")
+        self.assertEqual(server.mutation_copy("一个非常长但属于玩家想法的标题", "后备", 7, title=True), "一个非常长但属")
+        self.assertEqual(server.mutation_copy("", "后备", 7), "后备")
 
 
 if __name__ == "__main__":
