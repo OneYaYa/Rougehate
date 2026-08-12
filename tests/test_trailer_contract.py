@@ -30,10 +30,19 @@ class TrailerContractTests(unittest.TestCase):
         self.assertGreaterEqual(TRAILER.count("dash("), 10)
         self.assertGreaterEqual(TRAILER.count("drive("), 16)
 
+    def test_last_stand_leads_into_ai_weapon_comeback(self):
+        self.assertIn("function stageLastStand()", TRAILER)
+        self.assertIn("function stageForgedComeback()", TRAILER)
+        self.assertIn("player.hp = 9;", TRAILER)
+        self.assertIn("function trailerDropGuard", TRAILER)
+        self.assertIn("八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", TRAILER)
+        self.assertLess(TRAILER.index("stageLastStand();"), TRAILER.index("openForge(4);"))
+        self.assertLess(TRAILER.index("openForge(4);"), TRAILER.index("stageForgedComeback();"))
+
     def test_renderer_rebuilds_readme_preview(self):
         self.assertIn("def build_preview", RENDERER)
         self.assertIn("rouge-hate-trailer-preview.gif", RENDERER)
-        self.assertIn('DURATION = 38.02', RENDERER)
+        self.assertIn('DURATION = 43.22', RENDERER)
         self.assertIn('rouge-hate-gameplay-trailer-final.mp4', RENDERER)
 
 

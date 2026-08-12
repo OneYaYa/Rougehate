@@ -5378,7 +5378,10 @@ function drawWeaponPreview(weapon) {
   for (let y = 0; y < h; y += 28) { previewCtx.beginPath(); previewCtx.moveTo(0, y); previewCtx.lineTo(w, y); previewCtx.stroke(); }
   previewCtx.fillStyle = "rgba(255,255,255,.36)";
   previewCtx.font = "10px ui-monospace, Consolas, monospace";
-  previewCtx.fillText(`${(visualMeta[inferVisualForm(weapon)] || visualMeta.rifle).label.toUpperCase()} / GENERATED PHYSICAL FORM`, 18, 24);
+  const previewLabel = document.body.classList.contains("trailer-mode")
+    ? `${(visualMeta[inferVisualForm(weapon)] || visualMeta.rifle).label} / 已生成武器实体`
+    : `${(visualMeta[inferVisualForm(weapon)] || visualMeta.rifle).label.toUpperCase()} / GENERATED PHYSICAL FORM`;
+  previewCtx.fillText(previewLabel, 18, 24);
   drawWeaponModel(previewCtx, weapon, w * .54, h * .57, 0, 2.05, 1);
 }
 

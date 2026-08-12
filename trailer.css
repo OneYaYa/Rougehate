@@ -13,6 +13,7 @@ body.trailer-mode .intro-overlay {
 }
 
 body.trailer-mode .archetype-template-grid small,
+body.trailer-mode .archetype-template-grid button span,
 body.trailer-mode .upgrade-card .upgrade-family,
 body.trailer-mode .upgrade-card p,
 body.trailer-mode .mutation-evolved-name {
@@ -57,6 +58,16 @@ body.trailer-mode.trailer-punch .game-panel canvas {
 body.trailer-mode.trailer-zoom-chaos .game-panel canvas {
   --trailer-zoom: 1.16;
   --trailer-origin: 52% 50%;
+}
+
+body.trailer-mode.trailer-critical .rh-trailer-vignette {
+  box-shadow: inset 0 0 175px 52px rgba(118,0,24,.72);
+  animation: rh-trailer-danger .72s ease-in-out infinite alternate;
+}
+
+body.trailer-mode.trailer-critical .health-bar i {
+  background: #ff365f;
+  box-shadow: 0 0 18px #ff365f;
 }
 
 body.trailer-mode.trailer-zoom-boss .game-panel canvas {
@@ -291,6 +302,10 @@ body.trailer-mode .forge-button.trailer-ready {
   animation: rh-trailer-ready .42s ease-in-out infinite alternate;
 }
 
+body.trailer-mode .forge-button small:empty {
+  display: none;
+}
+
 body.trailer-mode .mutation-card.trailer-selected {
   border-color: #fff;
   transform: translateY(-9px) scale(1.025);
@@ -350,3 +365,4 @@ body.trailer-mode .mutation-card.trailer-selected {
 @keyframes rh-trailer-ready { from { transform: translateY(0); filter: brightness(.95); } to { transform: translateY(-3px); filter: brightness(1.3); } }
 @keyframes rh-trailer-orbit { to { transform: translate(-50%,-50%) rotate(360deg); } }
 @keyframes rh-trailer-blink { 50% { opacity: .25; } }
+@keyframes rh-trailer-danger { from { opacity: .72; } to { opacity: 1; } }

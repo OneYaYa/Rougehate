@@ -11,6 +11,7 @@
   let lastDamageCall = null;
   const baseDamageEnemy = damageEnemy;
   const baseFloatText = floatText;
+  const baseKillEnemy = killEnemy;
   damageEnemy = function trailerDamageGuard(enemy, amount, sourceWeapon, ...rest) {
     lastDamageCall = {
       amount, weapon: sourceWeapon?.name, delivery: sourceWeapon?.delivery,
@@ -29,19 +30,27 @@
     }
     return baseFloatText(x, y, text, color, large);
   };
+  killEnemy = function trailerDropGuard(...args) {
+    const result = baseKillEnemy(...args);
+    // Drops are real gameplay, but a random cache modal can interrupt the
+    // authored comeback shot. Director mode keeps the combat chain unbroken.
+    pickups = [];
+    xpGems = [];
+    return result;
+  };
 
   const layer = document.createElement("div");
   layer.innerHTML = `
     <div class="rh-trailer-letterbox top"></div>
     <div class="rh-trailer-letterbox bottom"></div>
     <div class="rh-trailer-vignette"></div>
-    <div class="rh-trailer-badge">REAL-TIME GAMEPLAY</div>
+    <div class="rh-trailer-badge">实机画面</div>
     <div class="rh-trailer-copy"><span class="kicker"></span><strong></strong><p></p></div>
     <div class="rh-trailer-flash"></div>
     <div class="rh-trailer-end">
       <div>
         <h1>ROUGE <i>HATE</i></h1>
-        <small>PLAY THE PROTOTYPE</small>
+        <small>立即试玩</small>
       </div>
     </div>`;
   document.body.append(layer);
@@ -172,6 +181,67 @@
     }
   }
 
+  function stageLastStand() {
+    configureRun(0, false);
+    weapons = [weapon({
+      name: "相位残刃", delivery: "melee", visual_form: "daggers", visual_variant: 2,
+      secondary_color: "#58e6ff", visual_motif: "即将熄灭的虫洞短刃",
+      damage: 3, cooldown: 1.6, projectile_count: 1, projectile_size: 11,
+      range: 118, spread_degrees: 45, color: "#b9f7ff", mutations: [],
+    })];
+    bonuses.damage = .72;
+    bonuses.cooldown = 1.2;
+    bonuses.area = .82;
+    bonuses.projectiles = 0;
+    bonuses.pierce = 0;
+    spawnHorde(72, false);
+    enemies.forEach((enemy, index) => {
+      const angle = index / enemies.length * Math.PI * 2 + (index % 3) * .08;
+      const radius = 420 + (index % 6) * 48;
+      enemy.x = player.x + Math.cos(angle) * radius;
+      enemy.y = player.y + Math.sin(angle) * radius * .72;
+      enemy.behavior = "chaser";
+      enemy.speed = 72 + (index % 5) * 8;
+      enemy.hp = enemy.maxHp = 360;
+      enemy.damage = 0;
+    });
+    player.hp = 18;
+    player.invulnerable = 999;
+    updateLoadoutUI();
+    updateHUD();
+  }
+
+  function stageForgedComeback() {
+    configureRun(2, false);
+    weapons = [starSwarmWeapon()];
+    bonuses.damage = 1.82;
+    bonuses.cooldown = .52;
+    bonuses.area = 1.42;
+    bonuses.projectiles = 3;
+    bonuses.pierce = 5;
+    bonuses.chainChance = 1;
+    bonuses.chainTargets = 8;
+    bonuses.chainDamage = .88;
+    bonuses.explosion = 62;
+    bonuses.singularityPull = 34;
+    bonuses.mutationAmp = .42;
+    spawnHorde(78, false);
+    enemies.forEach((enemy, index) => {
+      const angle = index / enemies.length * Math.PI * 2 + (index % 4) * .11;
+      const radius = 128 + (index % 9) * 43;
+      enemy.x = player.x + Math.cos(angle) * radius;
+      enemy.y = player.y + Math.sin(angle) * radius * .7;
+      enemy.hp = enemy.maxHp = index % 3 === 0 ? 52 : 210;
+      enemy.damage = 0;
+    });
+    player.hp = 9;
+    player.invulnerable = 999;
+    updateLoadoutUI();
+    invalidateSynergies();
+    updateSynergyUI();
+    updateHUD();
+  }
+
   function weapon(raw) {
     return hydrateWeapon({
       tradeoff: "none", tradeoff_text: "以走位维持输出窗口", homing: .35,
@@ -278,35 +348,35 @@
     state.rewardType = "mutation";
     state.mutationRound = 3;
     ui.upgrade.hidden = false;
-    ui.upgradeTitle.textContent = "WEAPON DREAM III";
-    ui.upgradeSubtitle.textContent = "CHOOSE AN EVOLUTION";
-    currentMutationWish = "Wormhole on hit. Pull the swarm into the next storm.";
+    ui.upgradeTitle.textContent = "选择武器进化";
+    ui.upgradeSubtitle.textContent = "三选一";
+    currentMutationWish = "命中后撕开虫洞，把敌群拖进雷暴。";
     currentMutationChoices = [
       {
-        target_index: 1, target_name: "遮天幼星群", title: "EVENT HORIZON",
-        description: "Pull the pack into one impact.",
-        tradeoff: "cooldown_up", tradeoff_text: "COOLDOWN +10%", evolution_name: "EVENT HORIZON",
+        target_index: 1, target_name: "遮天幼星群", title: "事件视界",
+        description: "把敌群拖向同一次撞击。",
+        tradeoff: "cooldown_up", tradeoff_text: "攻击间隔 +10%", evolution_name: "事件视界",
         accent_color: "#a66bff", tags: ["奇点", "牵引"], mutation_round: 3, effects: [],
       },
       {
-        target_index: 1, target_name: "遮天幼星群", title: "RETURN TIDE",
-        description: "Pierce, turn, strike again.",
-        tradeoff: "damage_down", tradeoff_text: "DAMAGE -12%", evolution_name: "RETURN TIDE",
+        target_index: 1, target_name: "遮天幼星群", title: "折返星潮",
+        description: "贯穿后折返，再次命中。",
+        tradeoff: "damage_down", tradeoff_text: "伤害 -12%", evolution_name: "折返星潮",
         accent_color: "#78eaff", tags: ["折返", "穿透"], mutation_round: 3, effects: [],
       },
       {
-        target_index: 1, target_name: "遮天幼星群", title: "THUNDER HATCH",
-        description: "Each hit breeds chain lightning.",
-        tradeoff: "range_down", tradeoff_text: "RANGE -10%", evolution_name: "THUNDER HATCH",
+        target_index: 1, target_name: "遮天幼星群", title: "雷暴孵化",
+        description: "每次命中都会孵化连锁雷暴。",
+        tradeoff: "range_down", tradeoff_text: "距离 -10%", evolution_name: "雷暴孵化",
         accent_color: "#d8fbff", tags: ["连锁", "雷暴"], mutation_round: 3, effects: [],
       },
     ];
     renderMutationChoices();
-    ui.upgrade.querySelector(".chapter").textContent = "WEAPON DREAM";
-    ui.upgradeSubtitle.textContent = "CHOOSE AN EVOLUTION";
+    ui.upgrade.querySelector(".chapter").textContent = "武器异变";
+    ui.upgradeSubtitle.textContent = "三选一";
     ui.upgradeOptions.querySelectorAll(".mutation-card").forEach((card, index) => {
-      card.querySelector(".upgrade-icon").textContent = ["I", "II", "III"][index];
-      card.querySelector(".upgrade-rarity").textContent = "EVOLUTION";
+      card.querySelector(".upgrade-icon").textContent = ["一", "二", "三"][index];
+      card.querySelector(".upgrade-rarity").textContent = "进化";
     });
   }
 
@@ -320,7 +390,7 @@
   configureRun(3, true);
   drive("KeyD", "KeyW");
   cameraMove(-155, 72, 150, -48, 3.05);
-  later(.28, () => caption("", "YOUR BUILD. UNLEASHED.", "", "#78eaff", "hero-copy"));
+  later(.28, () => caption("", "写下武器。杀出去。", "", "#78eaff", "hero-copy"));
   later(1.72, clearCaption);
   later(.86, () => dash("KeyD", "KeyW"));
   later(1.58, () => drive("KeyD", "KeyS"));
@@ -338,23 +408,23 @@
     openArchetypeSelection();
     ui.archetypeInput.value = "";
     ui.archetypeCount.textContent = "0";
-    ui.archetypeModal.querySelector(".chapter").textContent = "IDENTITY";
-    ui.archetypeModal.querySelector("header h2").textContent = "BUILD YOUR HERO";
+    ui.archetypeModal.querySelector(".chapter").textContent = "定义角色";
+    ui.archetypeModal.querySelector("header h2").textContent = "你想成为什么";
     ui.archetypeModal.querySelector("header p").hidden = true;
-    ui.archetypeModal.querySelector(".archetype-status span").textContent = "SHAPING…";
-    ui.archetypeBack.textContent = "BACK";
-    ui.archetypeConfirmLabel.textContent = "LOCK IN";
-    ui.archetypeModal.querySelector(".archetype-heading label").textContent = "OR DESCRIBE YOUR OWN";
-    ui.archetypeModal.querySelector(".archetype-heading span").textContent = "ORIGIN WEAVER";
+    ui.archetypeModal.querySelector(".archetype-status span").textContent = "正在生成…";
+    ui.archetypeBack.textContent = "返回";
+    ui.archetypeConfirmLabel.textContent = "确认";
+    ui.archetypeModal.querySelector(".archetype-heading label").textContent = "或者，描述你的角色";
+    ui.archetypeModal.querySelector(".archetype-heading span").textContent = "一句话生成";
     ui.archetypeModal.querySelectorAll(".archetype-template-grid strong").forEach((label, index) => {
-      label.textContent = ["VANGUARD", "HUNTER", "ASTROMANCER"][index];
+      label.textContent = ["近战勇士", "异星猎人", "星图术士"][index];
     });
   });
-  later(3.52, () => typeInto(ui.archetypeInput, "A phase assassin who cuts wormholes with gravity blades.", 1.45));
+  later(3.52, () => typeInto(ui.archetypeInput, "会瞬移，用引力短刃切开虫洞的相位刺客。", 1.45));
   later(5.05, () => {
     ui.archetypeStatus.hidden = false;
     ui.archetypeConfirm.disabled = true;
-    ui.archetypeConfirmLabel.textContent = "BUILDING…";
+    ui.archetypeConfirmLabel.textContent = "生成中…";
   });
 
   // 06.4–10.9 — Honest early-run survival with a long traversal and dash arc.
@@ -377,7 +447,7 @@
     resizeCanvas();
     drive("KeyD");
     cameraMove(-150, 48, 145, -38, 4.35);
-    caption("", "MOVE. DASH. SURVIVE.", "", "#58e6ff", "compact-hero-copy");
+    caption("", "走位。冲刺。活下去。", "", "#58e6ff", "compact-hero-copy");
   });
   later(7.22, () => dash("KeyD", "KeyW"));
   later(8.08, () => drive("KeyD", "KeyS"));
@@ -396,94 +466,116 @@
     resizeCanvas();
     state.level = 7;
     openUpgrade("upgrade");
-    ui.upgradeTitle.textContent = "BUILD THE RUN";
-    ui.upgradeSubtitle.textContent = "CHOOSE ONE";
+    ui.upgrade.querySelector(".chapter").textContent = "选择强化";
+    ui.upgradeTitle.textContent = "构筑本局";
+    ui.upgradeSubtitle.textContent = "三选一";
+    ui.upgradeOptions.querySelectorAll(".upgrade-rarity").forEach((label) => {
+      label.textContent = label.textContent.split("/").at(-1).trim();
+    });
   });
 
-  // 13.9–16.8 — Pay the choice off in motion, now with a growing arsenal.
+  // 13.9–19.3 — The fantasy collapses into a last stand: the build stalls,
+  // health is nearly gone, and a dense ring visibly closes around the player.
   later(13.88, () => {
-    hit("#72eaff");
+    hit("#ff365f");
     clearCaption();
-    configureRun(1, false);
+    stageLastStand();
     body.classList.add("trailer-focus-combat");
-    zoom("storm");
+    body.classList.add("trailer-critical");
+    zoom("chaos");
     resizeCanvas();
-    drive("KeyD", "KeyS");
-    cameraMove(-138, -42, 142, 54, 2.72);
-    caption("", "EVERY CHOICE STACKS.", "", "#72eaff", "compact-hero-copy");
+    drive("KeyD");
+    cameraMove(-112, -18, 96, 32, 5.1);
+    caption("", "退无可退。", "", "#ff5a72", "compact-hero-copy");
   });
-  later(14.62, () => dash("KeyD", "KeyS"));
-  later(15.38, clearCaption);
-  later(15.42, () => drive("KeyD", "KeyW"));
-  later(16.05, () => dash("KeyD", "KeyW"));
+  later(14.64, () => dash("KeyD", "KeyW"));
+  later(15.42, clearCaption);
+  later(15.55, () => drive("KeyS"));
+  later(16.18, () => dash("KeyS"));
+  later(16.92, () => drive("KeyA", "KeyS"));
+  later(17.42, () => {
+    player.hp = 9;
+    updateHUD();
+    hit("#ff365f", "soft");
+    caption("", "只剩一个愿望。", "", "#ff5a72", "compact-hero-copy");
+  });
+  later(18.54, () => {
+    drive();
+    clearCaption();
+  });
 
-  // 16.8–21.5 — Let the unique hook breathe: input, anticipation, result.
-  later(16.78, () => {
+  // 19.3–25.2 — The player writes the answer, AI forges it, and the result lands.
+  later(19.28, () => {
     hit("#ff365f");
     drive();
     zoom("forge");
+    body.classList.remove("trailer-critical");
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
     openForge(4);
-    ui.forgeTitle.textContent = "STAGE IV · FINAL FORGE";
-    ui.forge.querySelector(".forge-header .chapter").textContent = "AI WEAPON FORGE";
+    ui.forge.querySelector(".forge-rail span").textContent = "异梦";
+    ui.forgeTitle.textContent = "最后一次锻造";
+    ui.forge.querySelector(".forge-header .chapter").textContent = "AI 武器锻造";
     ui.forge.querySelector(".forge-header p").hidden = true;
-    ui.forge.querySelector(".wish-form label").textContent = "DESCRIBE IT";
-    ui.forgeButton.querySelector("span:not(.button-icon)").textContent = "FORGE";
-    ui.forgeButton.querySelector("small").textContent = "ONE LAST BUILD";
+    ui.forge.querySelector(".wish-form label").textContent = "描述你想要的武器";
+    ui.forgeButton.querySelector("span:not(.button-icon)").textContent = "开始锻造";
+    ui.forgeButton.querySelector("small").textContent = "";
   });
-  later(17.22, () => typeInto(ui.wishInput, "Eight hunter stars. Pierce. Return. Hatch lightning.", 1.78));
-  later(19.08, () => {
+  later(19.78, () => typeInto(ui.wishInput, "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", 2.02));
+  later(22.02, () => {
     ui.forgeButton.classList.add("trailer-ready");
     hit("#f3e9ff", "soft");
   });
-  later(19.45, () => {
+  later(22.48, () => {
     clearCaption();
     ui.forgeButton.classList.remove("trailer-ready");
     ui.wishForm.hidden = true;
     previewWeapon = starSwarmWeapon();
     showWeaponResult(previewWeapon, ["投射数量与追踪强度已按终局预算稳定"]);
-    ui.resultName.textContent = "STARFALL SWARM";
-    ui.resultDescription.textContent = "Hunt. Pierce. Return. Detonate.";
-    ui.resultTradeoff.textContent = "KEEP MOVING";
+    ui.resultName.textContent = "遮天幼星群";
+    ui.resultDescription.textContent = "追猎。贯穿。折返。雷暴。";
+    ui.resultTradeoff.textContent = "必须持续移动";
     ui.balanceNote.hidden = true;
-    ui.accept.textContent = "EQUIP";
-    ui.resultDelivery.textContent = "PROJECTILE";
-    ["DAMAGE", "COOLDOWN", "COUNT", "RANGE", "TRAJECTORY", "POWER"].forEach((text, index) => {
+    ui.accept.textContent = "装备";
+    ui.resultDelivery.textContent = "投射武器";
+    ["伤害", "间隔", "数量", "距离", "轨迹", "强度"].forEach((text, index) => {
       const label = ui.resultStats.querySelectorAll(".result-stat span")[index];
       if (label) label.textContent = text;
     });
     const trajectoryValue = ui.resultStats.querySelectorAll(".result-stat strong")[4];
-    if (trajectoryValue) trajectoryValue.textContent = "HOMING";
-    ["# HUNT", "# STARS", "# RETURN", "# STORM"].forEach((text, index) => {
+    if (trajectoryValue) trajectoryValue.textContent = "主动追踪";
+    ["# 追猎", "# 幼星", "# 折返", "# 雷暴"].forEach((text, index) => {
       const tag = ui.resultTags.children[index];
       if (tag) tag.textContent = text;
     });
     const costLabel = ui.resultTradeoff.parentElement?.querySelector("span");
-    if (costLabel) costLabel.textContent = "COST";
+    if (costLabel) costLabel.textContent = "代价";
   });
 
-  // 21.5–26.1 — First drop. The forged weapon appears in actual gameplay.
-  later(21.48, () => {
+  // 25.2–31.1 — Return to the same low-health pressure and let the forged
+  // weapon tear open the encirclement on its own.
+  later(25.15, () => {
     hit("#78eeff");
     clearCaption();
-    configureRun(2, false);
+    stageForgedComeback();
     body.classList.add("trailer-focus-combat");
     zoom("storm");
     resizeCanvas();
     drive("KeyD", "KeyW");
-    cameraMove(-165, 62, 158, -55, 4.35);
-    caption("", "WATCH IT HUNT.", "", "#78eeff", "compact-hero-copy");
+    cameraMove(-165, 62, 158, -55, 5.55);
+    caption("", "反击开始。", "", "#78eeff", "compact-hero-copy");
   });
-  later(22.24, () => dash("KeyD", "KeyW"));
-  later(23.02, clearCaption);
-  later(23.12, () => drive("KeyD", "KeyS"));
-  later(23.88, () => dash("KeyD", "KeyS"));
-  later(24.62, () => drive("KeyD", "KeyW"));
-  later(25.25, () => dash("KeyD", "KeyW"));
+  later(25.92, () => dash("KeyD", "KeyW"));
+  later(26.72, clearCaption);
+  later(26.84, () => drive("KeyD", "KeyS"));
+  later(27.62, () => dash("KeyD", "KeyS"));
+  later(28.42, () => drive("KeyD", "KeyW"));
+  later(29.18, () => dash("KeyD", "KeyW"));
+  later(30.02, () => drive("KeyD", "KeyS"));
+  later(30.58, () => dash("KeyD", "KeyS"));
 
-  // 26.1–29.5 — A second authored choice shows that weapons keep evolving.
-  later(26.08, () => {
+  // 31.1–34.4 — The same weapon can keep mutating during the run.
+  later(31.05, () => {
     hit("#b06cff");
     drive();
     zoom();
@@ -491,13 +583,13 @@
     resizeCanvas();
     showMutationChoice();
   });
-  later(28.78, () => {
+  later(33.74, () => {
     const cards = ui.upgradeOptions.querySelectorAll(".mutation-card");
     cards[0]?.classList.add("trailer-selected");
   });
 
-  // 29.5–34.8 — Final escalation: five weapons, full movement and the boss.
-  later(29.48, () => {
+  // 34.4–40.1 — Final escalation: five weapons, full movement and the boss.
+  later(34.35, () => {
     hit("#ffffff");
     clearCaption();
     configureRun(3, true);
@@ -506,15 +598,15 @@
     resizeCanvas();
     drive("KeyD", "KeyS");
     cameraMove(-168, -58, 160, 48, 5.05);
-    caption("", "FIVE WEAPONS. ONE WAY OUT.", "", "#ff5a72", "boss-copy");
+    caption("", "五件武器。杀出去。", "", "#ff5a72", "boss-copy");
   });
-  later(30.18, () => dash("KeyD", "KeyS"));
-  later(31.18, clearCaption);
-  later(31.02, () => drive("KeyD", "KeyW"));
-  later(31.78, () => dash("KeyD", "KeyW"));
-  later(32.52, () => drive("KeyD", "KeyS"));
-  later(33.16, () => dash("KeyD", "KeyS"));
-  later(33.82, () => {
+  later(35.08, () => dash("KeyD", "KeyS"));
+  later(36.12, clearCaption);
+  later(36.02, () => drive("KeyD", "KeyW"));
+  later(36.82, () => dash("KeyD", "KeyW"));
+  later(37.62, () => drive("KeyD", "KeyS"));
+  later(38.28, () => dash("KeyD", "KeyS"));
+  later(39.12, () => {
     drive("KeyD", "KeyW");
     state.skillCooldown = 0;
     useArchetypeSkill();
@@ -522,8 +614,8 @@
     state.shake = Math.max(state.shake, 18);
   });
 
-  // 34.8–38.0 — Clean, legible CTA hold.
-  later(34.78, () => {
+  // 40.1–43.2 — Clean, legible CTA hold.
+  later(40.1, () => {
     hit("#ffffff");
     drive();
     zoom();
@@ -532,7 +624,7 @@
     clearCaption();
     endCard.classList.add("visible");
   });
-  later(38.02, () => {
+  later(43.22, () => {
     window.ROUGE_HATE_TRAILER_CAMERA = { x: 0, y: 0 };
     document.documentElement.dataset.trailerComplete = "1";
   });
