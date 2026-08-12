@@ -15,7 +15,8 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn("openForge(4);", TRAILER)
         self.assertIn("showWeaponResult(previewWeapon", TRAILER)
         self.assertIn("showMutationChoice();", TRAILER)
-        self.assertIn("configureRun(3, true);", TRAILER)
+        for stage in ("stageHunterBuild();", "stageStormBuild();", "stageSingularityBuild();"):
+            self.assertIn(stage, TRAILER)
 
     def test_showcase_build_uses_distinct_vfx_signatures(self):
         for variant in (2, 6, 21, 23):
@@ -39,10 +40,20 @@ class TrailerContractTests(unittest.TestCase):
         self.assertLess(TRAILER.index("stageLastStand();"), TRAILER.index("openForge(4);"))
         self.assertLess(TRAILER.index("openForge(4);"), TRAILER.index("stageForgedComeback();"))
 
+    def test_last_stand_is_stationary_and_finale_has_three_builds(self):
+        last_stand_shot = TRAILER[TRAILER.index("later(13.88"):TRAILER.index("later(19.28")]
+        self.assertIn("cameraMove(0, 0, 0, 0, .2);", last_stand_shot)
+        self.assertNotIn("dash(", last_stand_shot)
+        self.assertNotIn('drive("Key', last_stand_shot)
+        self.assertNotIn("五件武器。杀出去。", TRAILER)
+        for function in ("function stageHunterBuild()", "function stageStormBuild()", "function stageSingularityBuild()"):
+            self.assertIn(function, TRAILER)
+        self.assertIn("function seedEnemyBarrage", TRAILER)
+
     def test_renderer_rebuilds_readme_preview(self):
         self.assertIn("def build_preview", RENDERER)
         self.assertIn("rouge-hate-trailer-preview.gif", RENDERER)
-        self.assertIn('DURATION = 43.22', RENDERER)
+        self.assertIn('DURATION = 49.22', RENDERER)
         self.assertIn('rouge-hate-gameplay-trailer-final.mp4', RENDERER)
 
 

@@ -164,7 +164,7 @@
       const radius = 112 + lane * 67 + (index % 3) * 18;
       enemy.x = player.x + Math.cos(angle) * radius;
       enemy.y = player.y + Math.sin(angle) * radius * .65;
-      enemy.speed *= .24;
+      enemy.speed *= .62;
       enemy.hp = index % 4 === 0 ? 68 : 430 + lane * 48;
       enemy.maxHp = enemy.hp;
       enemy.damage = 0;
@@ -181,6 +181,32 @@
     }
   }
 
+  function seedEnemyBarrage(colors, ringCount = 4, shotsPerRing = 18, speed = 108) {
+    enemyProjectiles = [];
+    for (let ring = 0; ring < ringCount; ring += 1) {
+      const radius = 245 + ring * 112;
+      const count = shotsPerRing + ring * 2;
+      for (let index = 0; index < count; index += 1) {
+        const angle = index / count * Math.PI * 2 + ring * .31;
+        const curve = (index % 2 ? 1 : -1) * (.09 + ring * .015);
+        const velocityAngle = angle + Math.PI + curve;
+        const projectileSpeed = speed + ring * 14;
+        enemyProjectiles.push({
+          x: player.x + Math.cos(angle) * radius,
+          y: player.y + Math.sin(angle) * radius * .72,
+          vx: Math.cos(velocityAngle) * projectileSpeed,
+          vy: Math.sin(velocityAngle) * projectileSpeed * .72,
+          radius: 5 + ring * .32,
+          damage: 0,
+          color: colors[(index + ring) % colors.length],
+          life: 7,
+          phase: angle,
+          dead: false,
+        });
+      }
+    }
+  }
+
   function stageLastStand() {
     configureRun(0, false);
     weapons = [weapon({
@@ -194,17 +220,18 @@
     bonuses.area = .82;
     bonuses.projectiles = 0;
     bonuses.pierce = 0;
-    spawnHorde(72, false);
+    spawnHorde(84, false);
     enemies.forEach((enemy, index) => {
       const angle = index / enemies.length * Math.PI * 2 + (index % 3) * .08;
-      const radius = 420 + (index % 6) * 48;
+      const radius = 455 + (index % 6) * 52;
       enemy.x = player.x + Math.cos(angle) * radius;
       enemy.y = player.y + Math.sin(angle) * radius * .72;
       enemy.behavior = "chaser";
-      enemy.speed = 72 + (index % 5) * 8;
+      enemy.speed = 122 + (index % 6) * 9;
       enemy.hp = enemy.maxHp = 360;
       enemy.damage = 0;
     });
+    seedEnemyBarrage(["#ff365f", "#ff8a4c", "#b66cff"], 4, 18, 96);
     player.hp = 18;
     player.invulnerable = 999;
     updateLoadoutUI();
@@ -242,6 +269,48 @@
     updateHUD();
   }
 
+  function prepareLateBuild(arsenal, colors, includeBoss = false, count = 88) {
+    configureRun(3, includeBoss);
+    weapons = arsenal;
+    for (const item of weapons) item.forgeTier = 3;
+    bonuses.damage = 1.72;
+    bonuses.cooldown = .42;
+    bonuses.area = 1.72;
+    bonuses.range = 1.3;
+    bonuses.projectiles = 4;
+    bonuses.pierce = 7;
+    bonuses.crit = .52;
+    bonuses.chainChance = 1;
+    bonuses.chainTargets = 10;
+    bonuses.chainDamage = .86;
+    bonuses.explosion = 68;
+    bonuses.singularityPull = 44;
+    bonuses.singularityDeath = .75;
+    bonuses.mutationAmp = .48;
+    spawnHorde(count, includeBoss);
+    enemies.forEach((enemy, index) => {
+      if (enemy.boss) return;
+      const angle = index / count * Math.PI * 2 + (index % 5) * .18;
+      const radius = 165 + (index % 10) * 48;
+      enemy.x = player.x + Math.cos(angle) * radius;
+      enemy.y = player.y + Math.sin(angle) * radius * .72;
+      enemy.speed = 112 + (index % 7) * 9;
+      enemy.hp = enemy.maxHp = index % 4 === 0 ? 115 : 620 + (index % 5) * 90;
+      enemy.damage = 0;
+      if (index % 5 === 0) {
+        enemy.behavior = "radial";
+        enemy.shootTimer = .08 + (index % 3) * .08;
+      }
+    });
+    seedEnemyBarrage(colors, 4, 18, 122);
+    player.hp = player.maxHp;
+    player.invulnerable = 999;
+    updateLoadoutUI();
+    invalidateSynergies();
+    updateSynergyUI();
+    updateHUD();
+  }
+
   function weapon(raw) {
     return hydrateWeapon({
       tradeoff: "none", tradeoff_text: "以走位维持输出窗口", homing: .35,
@@ -265,6 +334,54 @@
         mutation("split", "虫卵裂", "#8ae9ff"),
       ],
     });
+  }
+
+  function stageHunterBuild() {
+    const swarm = starSwarmWeapon();
+    swarm.cooldown = .17;
+    swarm.projectile_count = 10;
+    swarm.damage = 72;
+    swarm.explosion_radius = 58;
+    prepareLateBuild([swarm], ["#ff365f", "#ff9b54"], false, 92);
+  }
+
+  function stageStormBuild() {
+    const forkedBeam = weapon({
+      name: "万伏雷鳗", delivery: "beam", visual_form: "staff", visual_variant: 6,
+      secondary_color: "#f1ffff", visual_motif: "横穿星海的雷鳗脊骨",
+      damage: 76, cooldown: .16, range: 1040, projectile_size: 18, color: "#63efff",
+      mutations: [
+        mutation("fork", "三叉雷脊", "#63efff"),
+        mutation("chain", "万伏回响", "#ffffff"),
+        mutation("aftershock", "余雷", "#a66bff"),
+      ],
+    });
+    const stormCore = weapon({
+      name: "雷暴核心", delivery: "aura", visual_form: "orb", visual_variant: 12,
+      secondary_color: "#151349", visual_motif: "不断过载的蓝白脉冲核",
+      damage: 58, cooldown: .18, range: 285, projectile_size: 24,
+      explosion_radius: 76, slow_percent: .28, color: "#9ffcff",
+      mutations: [mutation("nova", "脉冲星", "#9ffcff"), mutation("aftershock", "复震", "#b66cff")],
+    });
+    prepareLateBuild([forkedBeam, stormCore], ["#ff5a72", "#ffb347", "#b66cff"], false, 86);
+  }
+
+  function stageSingularityBuild() {
+    const voidEyes = weapon({
+      name: "十二颗虚空之眼", delivery: "orbit", visual_form: "drone", visual_variant: 21,
+      secondary_color: "#11051f", visual_motif: "环绕猎物收紧的奇点眼群",
+      damage: 64, cooldown: .15, projectile_count: 12, projectile_size: 18,
+      range: 205, color: "#8b72ff",
+      mutations: [mutation("orbit_salvo", "群星齐射", "#73efff"), mutation("nova", "死星花", "#ff5fc8")],
+    });
+    const eventHorizon = weapon({
+      name: "事件视界", delivery: "aura", visual_form: "orb", visual_variant: 21,
+      secondary_color: "#050208", visual_motif: "向内坍缩的紫黑引力井",
+      damage: 92, cooldown: .22, range: 390, projectile_size: 28,
+      explosion_radius: 112, slow_percent: .38, color: "#b66cff",
+      mutations: [mutation("aftershock", "二次坍缩", "#b66cff"), mutation("nova", "终焉脉冲", "#ff5fc8")],
+    });
+    prepareLateBuild([voidEyes, eventHorizon], ["#ff365f", "#ff5fc8", "#9b5cff"], true, 82);
   }
 
   function configureRun(tier, includeBoss = false) {
@@ -484,15 +601,11 @@
     body.classList.add("trailer-critical");
     zoom("chaos");
     resizeCanvas();
-    drive("KeyD");
-    cameraMove(-112, -18, 96, 32, 5.1);
+    drive();
+    cameraMove(0, 0, 0, 0, .2);
     caption("", "退无可退。", "", "#ff5a72", "compact-hero-copy");
   });
-  later(14.64, () => dash("KeyD", "KeyW"));
   later(15.42, clearCaption);
-  later(15.55, () => drive("KeyS"));
-  later(16.18, () => dash("KeyS"));
-  later(16.92, () => drive("KeyA", "KeyS"));
   later(17.42, () => {
     player.hp = 9;
     updateHUD();
@@ -588,25 +701,46 @@
     cards[0]?.classList.add("trailer-selected");
   });
 
-  // 34.4–40.1 — Final escalation: five weapons, full movement and the boss.
+  // 34.4–46.0 — Three different late-game builds, each with its own combat
+  // silhouette, movement direction, hostile bullet pattern and color story.
   later(34.35, () => {
     hit("#ffffff");
     clearCaption();
-    configureRun(3, true);
+    stageHunterBuild();
     body.classList.add("trailer-focus-combat");
-    zoom("boss");
+    zoom("storm");
+    resizeCanvas();
+    drive("KeyD", "KeyW");
+    cameraMove(-142, 48, 128, -42, 3.7);
+  });
+  later(35.08, () => dash("KeyD", "KeyW"));
+  later(36.02, () => drive("KeyD", "KeyS"));
+  later(36.78, () => dash("KeyD", "KeyS"));
+
+  later(38.15, () => {
+    hit("#72eaff");
+    stageStormBuild();
+    zoom("sun");
     resizeCanvas();
     drive("KeyD", "KeyS");
-    cameraMove(-168, -58, 160, 48, 5.05);
-    caption("", "五件武器。杀出去。", "", "#ff5a72", "boss-copy");
+    cameraMove(136, -44, -126, 48, 3.72);
   });
-  later(35.08, () => dash("KeyD", "KeyS"));
-  later(36.12, clearCaption);
-  later(36.02, () => drive("KeyD", "KeyW"));
-  later(36.82, () => dash("KeyD", "KeyW"));
-  later(37.62, () => drive("KeyD", "KeyS"));
-  later(38.28, () => dash("KeyD", "KeyS"));
-  later(39.12, () => {
+  later(38.86, () => dash("KeyD", "KeyS"));
+  later(39.72, () => drive("KeyD", "KeyW"));
+  later(40.54, () => dash("KeyD", "KeyW"));
+
+  later(42.0, () => {
+    hit("#b66cff");
+    stageSingularityBuild();
+    zoom("boss");
+    resizeCanvas();
+    drive("KeyD", "KeyW");
+    cameraMove(-148, 50, 132, -46, 3.78);
+  });
+  later(42.72, () => dash("KeyD", "KeyW"));
+  later(43.62, () => drive("KeyD", "KeyS"));
+  later(44.36, () => dash("KeyD", "KeyS"));
+  later(45.08, () => {
     drive("KeyD", "KeyW");
     state.skillCooldown = 0;
     useArchetypeSkill();
@@ -614,8 +748,8 @@
     state.shake = Math.max(state.shake, 18);
   });
 
-  // 40.1–43.2 — Clean, legible CTA hold.
-  later(40.1, () => {
+  // 46.0–49.2 — Clean, legible CTA hold.
+  later(46.0, () => {
     hit("#ffffff");
     drive();
     zoom();
@@ -624,7 +758,7 @@
     clearCaption();
     endCard.classList.add("visible");
   });
-  later(43.22, () => {
+  later(49.22, () => {
     window.ROUGE_HATE_TRAILER_CAMERA = { x: 0, y: 0 };
     document.documentElement.dataset.trailerComplete = "1";
   });
