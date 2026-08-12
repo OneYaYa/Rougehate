@@ -296,6 +296,71 @@ body.trailer-mode.trailer-zoom-forge .forge-modal {
   box-shadow: 0 48px 180px #000, 0 0 85px rgba(255,54,95,.2);
 }
 
+body.trailer-mode.trailer-forge-input-closeup #forgeModal {
+  background: radial-gradient(circle at 50% 50%, rgba(255,54,95,.09), transparent 48%), #020207;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .forge-modal {
+  width: min(1140px, 92vw);
+  max-height: none;
+  grid-template-columns: 1fr;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: scale(1);
+}
+
+body.trailer-mode.trailer-forge-input-closeup .forge-rail,
+body.trailer-mode.trailer-forge-input-closeup .forge-header,
+body.trailer-mode.trailer-forge-input-closeup .wish-form > label,
+body.trailer-mode.trailer-forge-input-closeup .form-actions,
+body.trailer-mode.trailer-forge-input-closeup .char-count {
+  display: none;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .rh-trailer-badge {
+  visibility: hidden;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .forge-main {
+  padding: 0;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .wish-form {
+  margin: 0;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .input-frame {
+  filter: drop-shadow(0 28px 80px rgba(0,0,0,.9));
+}
+
+body.trailer-mode.trailer-forge-input-closeup .input-frame::before,
+body.trailer-mode.trailer-forge-input-closeup .input-frame::after {
+  width: 28px;
+  height: 28px;
+  border-width: 2px 0 0 2px;
+  filter: drop-shadow(0 0 9px #ff365f);
+}
+
+body.trailer-mode.trailer-forge-input-closeup .input-frame::after {
+  border-width: 0 2px 2px 0;
+}
+
+body.trailer-mode.trailer-forge-input-closeup .input-frame textarea {
+  height: 220px;
+  min-height: 210px;
+  padding: 62px 68px;
+  overflow: hidden;
+  border-color: rgba(255,54,95,.58);
+  background: rgba(7,7,13,.94);
+  color: #fff;
+  box-shadow: inset 0 0 65px rgba(255,54,95,.04), 0 0 55px rgba(255,54,95,.1);
+  caret-color: #ff365f;
+  font: 600 clamp(28px, 3vw, 46px)/1.6 system-ui, sans-serif;
+  letter-spacing: .035em;
+}
+
 body.trailer-mode .forge-button.trailer-ready {
   border-color: #fff;
   box-shadow: 0 0 12px #fff, 0 0 38px rgba(255,54,95,.8);

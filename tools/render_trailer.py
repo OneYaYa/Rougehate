@@ -29,7 +29,8 @@ RAW = OUTPUT / "raw" / time.strftime("%Y%m%d-%H%M%S")
 PORT = 8798
 DURATION = 49.22
 SAMPLE_RATE = 48_000
-CAPTURE_PREROLL = 1.0
+CAPTURE_PREROLL = 0.0
+VIDEO_SYNC_DELAY = 0.62
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 
 
@@ -98,6 +99,20 @@ def add_noise(track: np.ndarray, at: float, duration: float, amplitude: float,
     right = math.sqrt((1 + pan) * .5)
     track[begin:begin + count, 0] += signal * left
     track[begin:begin + count, 1] += signal * right
+
+
+def add_keypress(track: np.ndarray, at: float, index: int, punctuation: bool = False) -> None:
+    """Layer a dry key-down and key-return click for the on-screen wish."""
+    pan = (-.22, .18, -.08, .25)[index % 4]
+    strength = .072 if punctuation else .047
+    add_noise(track, at, .038 if punctuation else .027, strength, 92,
+              pan=pan, seed=6100 + index)
+    add_tone(track, at, .032, 760 + (index % 5) * 54, .018, 68,
+             pan=pan, harmonics=(1, .3))
+    add_noise(track, at + .034, .025, strength * .46, 105,
+              pan=-pan * .6, seed=6400 + index)
+    if punctuation:
+        add_tone(track, at, .075, 245, .026, 30, pan=pan, harmonics=(1, .42))
 
 
 def add_riser(track: np.ndarray, start: float, duration: float, amplitude: float, seed: int) -> None:
@@ -170,22 +185,24 @@ def build_soundtrack(path: Path) -> None:
     for at in [11.35, 12.25, 13.15]:
         add_noise(track, at, .08, .055, 34, seed=int(at * 1000))
 
-    # 13.88–19.28: the build fails and the horde closes in. Sparse, heavy
-    # pulses leave room for the low-health visuals before the last-resort forge.
+    # 13.88–17.55: the horde closes in fast, then the forge interrupts the
+    # encirclement before enemies overlap the stationary player.
     rhythm(13.88, 17.45, 116, .43, .022)
-    for index, at in enumerate(np.arange(16.0, 19.15, .52)):
+    for index, at in enumerate(np.arange(15.45, 17.5, .42)):
         add_kick(track, float(at), .46 + index * .035)
         add_noise(track, float(at), .13, .06 + index * .009, 20,
                   pan=(-.38 if index % 2 else .38), seed=4700 + index)
-    add_riser(track, 17.42, 1.86, .2, 480)
+    add_riser(track, 16.25, 1.3, .2, 480)
 
-    # 19.28–25.15: the typed wish is forged; mechanical ticks accelerate into
-    # the reveal at 22.48, then hold the generated weapon on a tense chord.
-    for index, at in enumerate(np.arange(19.45, 22.42, .29)):
-        add_noise(track, float(at), .05, .045 + index * .0035, 42,
-                  pan=(-.58 if index % 2 else .58), seed=5200 + index)
-        add_tone(track, float(at), .11, 220 + index * 15, .026 + index * .0015,
-                 8, pan=(-.35 if index % 2 else .35), harmonics=(1, .2))
+    # 17.55–25.15: every visible character has a synchronized mechanical
+    # keypress; punctuation lands with a slightly heavier confirmation click.
+    wish_text = "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。"
+    typing_start = 18.18
+    typing_duration = 3.25
+    for index, character in enumerate(wish_text):
+        at = typing_start + index / len(wish_text) * typing_duration
+        add_keypress(track, at, index, character in "，。；！？")
+    add_tone(track, 17.55, 4.75, 110.0, .045, .48, harmonics=(1, .25, .08))
     add_riser(track, 21.35, 1.13, .18, 601)
     for frequency, pan in [(98.0, -.3), (146.83, .1), (196.0, .35)]:
         add_tone(track, 22.48, 2.42, frequency, .12, 1.7, pan=pan, harmonics=(1, .3, .1))
@@ -204,7 +221,7 @@ def build_soundtrack(path: Path) -> None:
     add_tone(track, 42.0, 3.72, 49.0, .09, .38, pan=.2, harmonics=(1, .52, .24))
 
     # Each visual chapter lands on a distinct impact; the last one opens the CTA.
-    cut_points = [3.18, 6.38, 10.88, 13.88, 17.42, 19.28, 22.48, 25.15, 31.05, 34.35, 38.15, 42.0, 46.0]
+    cut_points = [3.18, 6.38, 10.88, 13.88, 16.25, 17.55, 22.48, 25.15, 31.05, 34.35, 38.15, 42.0, 46.0]
     for number, at in enumerate(cut_points):
         if at not in (22.48,):
             add_riser(track, max(0, at - .34), .34, .115 if at < 21 else .16, 800 + number)
@@ -263,11 +280,6 @@ def record_gameplay() -> Path:
                 )
                 page = context.new_page()
                 video = page.video
-                # Give Chromium's video recorder a real pre-roll before the
-                # director clock starts. Without this warm-up the first second
-                # of authored footage is never captured, and the visual cuts
-                # arrive almost two seconds ahead of the soundtrack after mux.
-                page.wait_for_timeout(1050)
                 page.goto(f"http://127.0.0.1:{PORT}/?trailer=1", wait_until="networkidle")
                 deadline = time.time() + DURATION + 15
                 while time.time() < deadline:
@@ -297,11 +309,13 @@ def mux_video(raw_video: Path, soundtrack: Path, destination: Path) -> None:
     command = [
         ffmpeg, "-y", "-ss", str(CAPTURE_PREROLL), "-i", str(raw_video), "-i", str(soundtrack),
         "-t", str(DURATION), "-map", "0:v:0", "-map", "1:a:0",
-        # Playwright records a short navigation pre-roll before director mode
-        # starts. The calibrated input seek removes it; pad the final logo hold and
-        # force constant 30 fps so H.264 level metadata remains standards-safe.
+        # Playwright's video stream begins on the first authored frame, so no
+        # input seek is applied. Its encoder clock settles about 620 ms after
+        # the director clock; hold the opening frame for that calibrated offset
+        # so visual typing and generated keypresses land together.
         "-vf", (
-            "tpad=stop_mode=clone:stop_duration=0.68,"
+            f"tpad=start_mode=clone:start_duration={VIDEO_SYNC_DELAY}:"
+            "stop_mode=clone:stop_duration=0.68,"
             "scale=1920:1080:flags=lanczos,fps=30"
         ),
         "-c:v", "libx264", "-preset", "medium", "-crf", "15",

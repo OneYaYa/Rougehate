@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAILER = (ROOT / "trailer.js").read_text(encoding="utf-8")
+TRAILER_CSS = (ROOT / "trailer.css").read_text(encoding="utf-8")
 RENDERER = (ROOT / "tools" / "render_trailer.py").read_text(encoding="utf-8")
 
 
@@ -41,10 +42,12 @@ class TrailerContractTests(unittest.TestCase):
         self.assertLess(TRAILER.index("openForge(4);"), TRAILER.index("stageForgedComeback();"))
 
     def test_last_stand_is_stationary_and_finale_has_three_builds(self):
-        last_stand_shot = TRAILER[TRAILER.index("later(13.88"):TRAILER.index("later(19.28")]
+        last_stand_shot = TRAILER[TRAILER.index("later(13.88"):TRAILER.index("later(17.55")]
         self.assertIn("cameraMove(0, 0, 0, 0, .2);", last_stand_shot)
         self.assertNotIn("dash(", last_stand_shot)
         self.assertNotIn('drive("Key', last_stand_shot)
+        self.assertIn("const arrivalWindow = 3.7;", TRAILER)
+        self.assertIn("(distance - 98) / arrivalWindow", TRAILER)
         self.assertNotIn("五件武器。杀出去。", TRAILER)
         for function in ("function stageHunterBuild()", "function stageStormBuild()", "function stageSingularityBuild()"):
             self.assertIn(function, TRAILER)
@@ -55,6 +58,15 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn("rouge-hate-trailer-preview.gif", RENDERER)
         self.assertIn('DURATION = 49.22', RENDERER)
         self.assertIn('rouge-hate-gameplay-trailer-final.mp4', RENDERER)
+
+    def test_ai_wish_gets_text_closeup_and_synchronized_keypresses(self):
+        self.assertIn('body.classList.add("trailer-forge-input-closeup")', TRAILER)
+        self.assertIn('body.classList.remove("trailer-forge-input-closeup")', TRAILER)
+        self.assertIn("trailer-forge-input-closeup .input-frame textarea", TRAILER_CSS)
+        self.assertIn("def add_keypress", RENDERER)
+        self.assertIn("add_keypress(track, at, index", RENDERER)
+        self.assertIn("CAPTURE_PREROLL = 0.0", RENDERER)
+        self.assertIn("VIDEO_SYNC_DELAY = 0.62", RENDERER)
 
 
 if __name__ == "__main__":

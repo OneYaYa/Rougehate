@@ -221,17 +221,19 @@
     bonuses.projectiles = 0;
     bonuses.pierce = 0;
     spawnHorde(84, false);
+    const arrivalWindow = 3.7;
     enemies.forEach((enemy, index) => {
       const angle = index / enemies.length * Math.PI * 2 + (index % 3) * .08;
-      const radius = 455 + (index % 6) * 52;
+      const radius = 520 + (index % 6) * 44;
       enemy.x = player.x + Math.cos(angle) * radius;
-      enemy.y = player.y + Math.sin(angle) * radius * .72;
+      enemy.y = player.y + Math.sin(angle) * radius * .8;
       enemy.behavior = "chaser";
-      enemy.speed = 122 + (index % 6) * 9;
+      const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+      enemy.speed = Math.max(82, (distance - 98) / arrivalWindow);
       enemy.hp = enemy.maxHp = 360;
       enemy.damage = 0;
     });
-    seedEnemyBarrage(["#ff365f", "#ff8a4c", "#b66cff"], 4, 18, 96);
+    seedEnemyBarrage(["#ff365f", "#ff8a4c", "#b66cff"], 4, 18, 68);
     player.hp = 18;
     player.invulnerable = 999;
     updateLoadoutUI();
@@ -591,8 +593,8 @@
     });
   });
 
-  // 13.9–19.3 — The fantasy collapses into a last stand: the build stalls,
-  // health is nearly gone, and a dense ring visibly closes around the player.
+  // 13.9–17.6 — The fantasy collapses into a last stand. Cut away at the exact
+  // moment the fast-moving ring is about to touch the stationary player.
   later(13.88, () => {
     hit("#ff365f");
     clearCaption();
@@ -606,22 +608,24 @@
     caption("", "退无可退。", "", "#ff5a72", "compact-hero-copy");
   });
   later(15.42, clearCaption);
-  later(17.42, () => {
+  later(16.25, () => {
     player.hp = 9;
     updateHUD();
     hit("#ff365f", "soft");
     caption("", "只剩一个愿望。", "", "#ff5a72", "compact-hero-copy");
   });
-  later(18.54, () => {
+  later(17.38, () => {
     drive();
     clearCaption();
   });
 
-  // 19.3–25.2 — The player writes the answer, AI forges it, and the result lands.
-  later(19.28, () => {
+  // 17.6–25.2 — Cut straight from the closing ring to the player writing an
+  // answer; the longer type-on keeps the core AI interaction fully readable.
+  later(17.55, () => {
     hit("#ff365f");
     drive();
     zoom("forge");
+    body.classList.add("trailer-forge-input-closeup");
     body.classList.remove("trailer-critical");
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
@@ -631,16 +635,18 @@
     ui.forge.querySelector(".forge-header .chapter").textContent = "AI 武器锻造";
     ui.forge.querySelector(".forge-header p").hidden = true;
     ui.forge.querySelector(".wish-form label").textContent = "描述你想要的武器";
+    ui.wishInput.placeholder = "";
     ui.forgeButton.querySelector("span:not(.button-icon)").textContent = "开始锻造";
     ui.forgeButton.querySelector("small").textContent = "";
   });
-  later(19.78, () => typeInto(ui.wishInput, "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", 2.02));
+  later(18.18, () => typeInto(ui.wishInput, "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", 3.25));
   later(22.02, () => {
     ui.forgeButton.classList.add("trailer-ready");
     hit("#f3e9ff", "soft");
   });
   later(22.48, () => {
     clearCaption();
+    body.classList.remove("trailer-forge-input-closeup");
     ui.forgeButton.classList.remove("trailer-ready");
     ui.wishForm.hidden = true;
     previewWeapon = starSwarmWeapon();
