@@ -57,6 +57,9 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn("八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", TRAILER)
         self.assertLess(TRAILER.index("stageLastStand();"), TRAILER.index("openForge(4);"))
         self.assertLess(TRAILER.index("openForge(4);"), TRAILER.index("stageForgedComeback();"))
+        comeback_setup = TRAILER[TRAILER.index("function stageForgedComeback()"):TRAILER.index("function prepareLateBuild")]
+        self.assertIn("spawnHorde(34, false)", comeback_setup)
+        self.assertIn("const comebackPacks = [", comeback_setup)
 
     def test_last_stand_uses_organic_pursuit_and_finale_has_three_builds(self):
         last_stand_shot = TRAILER[TRAILER.index("later(13.65"):TRAILER.index("later(17.8")]
@@ -70,13 +73,24 @@ class TrailerContractTests(unittest.TestCase):
         self.assertNotIn("五件武器。杀出去。", TRAILER)
         for function in ("function stageHunterBuild()", "function stageStormBuild()", "function stageSingularityBuild()"):
             self.assertIn(function, TRAILER)
+        self.assertIn('caption("终局武器 01 / HUNTER", "遮天幼星群"', TRAILER)
+        self.assertIn('caption("终局武器 02 / STORM", "万伏雷鳗"', TRAILER)
+        self.assertIn('caption("终局武器 03 / VOID", "事件视界"', TRAILER)
+        self.assertIn("prepareLateBuild([forkedBeam]", TRAILER)
+        self.assertIn("prepareLateBuild([eventHorizon]", TRAILER)
         self.assertIn("function seedEnemyBarrage", TRAILER)
         self.assertIn("seedEnemyBarrage(colors, 1, 10, 112)", TRAILER)
+
+    def test_opening_dashes_have_enemies_on_both_travel_lanes(self):
+        opening = TRAILER[TRAILER.index("function stageOpeningHook()"):TRAILER.index("function configureRun")]
+        self.assertIn("const openingRoute = [", opening)
+        self.assertIn("enemy.hp = enemy.maxHp = 1450", opening)
+        self.assertIn("currentBoss.x = player.x + 500", opening)
 
     def test_renderer_rebuilds_readme_preview(self):
         self.assertIn("def build_preview", RENDERER)
         self.assertIn("rouge-hate-trailer-preview.gif", RENDERER)
-        self.assertIn('DURATION = 49.22', RENDERER)
+        self.assertIn('DURATION = 54.22', RENDERER)
         self.assertIn('rouge-hate-gameplay-trailer-final.mp4', RENDERER)
 
     def test_ai_wish_gets_text_closeup_and_synchronized_keypresses(self):

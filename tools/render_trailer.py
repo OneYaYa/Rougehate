@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "trailer-output"
 RAW = OUTPUT / "raw" / time.strftime("%Y%m%d-%H%M%S")
 PORT = 8798
-DURATION = 49.22
+DURATION = 54.22
 SAMPLE_RATE = 48_000
 OUTPUT_FPS = 25
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
@@ -140,8 +140,8 @@ def build_soundtrack(path: Path) -> None:
     arp_notes = [146.83, 174.61, 220.00, 261.63, 220.00, 174.61]
 
     # A continuous sub-bed glues the four narrative chapters together.
-    add_tone(track, 0, 46.0, 36.71, .09, .16, harmonics=(1, .35, .16))
-    add_tone(track, 3.0, 43.0, 73.42, .038, .15, pan=-.18, harmonics=(1, .22))
+    add_tone(track, 0, 50.1, 36.71, .09, .16, harmonics=(1, .35, .16))
+    add_tone(track, 3.0, 47.1, 73.42, .038, .15, pan=-.18, harmonics=(1, .22))
 
     def rhythm(start: float, end: float, bpm: float, intensity: float,
                bright: float = 0.0, double_kick: bool = False) -> None:
@@ -220,14 +220,14 @@ def build_soundtrack(path: Path) -> None:
         add_tone(track, at, .16, (310, 465, 698)[index], .048, 12,
                  pan=(-.34, 0, .34)[index], harmonics=(1, .3))
 
-    # 34.35–46.00: three late-game builds escalate without interrupting the drop.
-    rhythm(34.35, 46.00, 168, .94, .13, True)
-    add_tone(track, 36.0, 2.05, 55.0, .08, .35, harmonics=(1, .5, .22))
-    add_tone(track, 38.15, 3.55, 82.41, .075, .42, pan=-.22, harmonics=(1, .42, .2))
-    add_tone(track, 42.0, 3.72, 49.0, .09, .38, pan=.2, harmonics=(1, .52, .24))
+    # 34.35–50.10: three named endgame weapons each receive a full showcase.
+    rhythm(34.35, 50.10, 168, .94, .13, True)
+    add_tone(track, 36.0, 2.55, 55.0, .08, .35, harmonics=(1, .5, .22))
+    add_tone(track, 39.2, 4.9, 82.41, .075, .42, pan=-.22, harmonics=(1, .42, .2))
+    add_tone(track, 44.4, 5.42, 49.0, .09, .38, pan=.2, harmonics=(1, .52, .24))
 
     # Each visual chapter lands on a distinct impact; the last one opens the CTA.
-    cut_points = [3.0, 6.15, 10.5, 11.75, 13.65, 16.25, 17.8, 22.7, 25.15, 31.05, 34.35, 38.15, 42.0, 46.0]
+    cut_points = [3.0, 6.15, 10.5, 11.75, 13.65, 16.25, 17.8, 22.7, 25.15, 31.05, 34.35, 39.2, 44.4, 50.1]
     for number, at in enumerate(cut_points):
         if at not in (22.7,):
             add_riser(track, max(0, at - .34), .34, .115 if at < 21 else .16, 800 + number)
@@ -237,9 +237,9 @@ def build_soundtrack(path: Path) -> None:
 
     # Logo hold: resolved synthetic chord and a clean social-platform-safe tail.
     for frequency, pan in [(73.42, -.38), (110.0, -.08), (146.83, .32), (220.0, .12)]:
-        add_tone(track, 46.01, 3.0, frequency, .12, 1.1, pan=pan, harmonics=(1, .28, .08))
+        add_tone(track, 50.11, 3.85, frequency, .12, 1.1, pan=pan, harmonics=(1, .28, .08))
 
-    fade_start = int(48.55 * SAMPLE_RATE)
+    fade_start = int(53.55 * SAMPLE_RATE)
     track[fade_start:] *= np.linspace(1, 0, len(track) - fade_start)[:, None]
     # Gentle saturation and normalization make the tiny synth feel trailer-sized.
     track = np.tanh(track * 1.32)

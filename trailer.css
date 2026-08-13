@@ -243,6 +243,31 @@ body.trailer-mode.trailer-zoom-void .game-panel canvas {
   font-size: clamp(28px, 3.2vw, 49px);
 }
 
+.rh-trailer-copy.build-copy {
+  left: 42px;
+  bottom: 46px;
+  width: min(570px, 46vw);
+  max-width: none;
+  padding: 14px 22px 16px 17px;
+  border-left: 3px solid var(--copy-accent);
+  background: linear-gradient(90deg, rgba(3,4,10,.88), rgba(3,4,10,.52) 66%, rgba(3,4,10,0));
+}
+
+.rh-trailer-copy.build-copy .kicker {
+  margin-bottom: 7px;
+  font-size: clamp(9px, .75vw, 12px);
+}
+
+.rh-trailer-copy.build-copy strong {
+  font-size: clamp(32px, 3.55vw, 56px);
+}
+
+.rh-trailer-copy.build-copy p {
+  margin-top: 8px;
+  color: rgba(244,247,255,.9);
+  font-weight: 650;
+}
+
 .rh-trailer-copy.boss-copy {
   bottom: 55px;
   --copy-accent: #ff5a72;
