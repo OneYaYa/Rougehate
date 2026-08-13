@@ -280,6 +280,128 @@ body.trailer-mode.trailer-zoom-void .game-panel canvas {
   animation: rh-trailer-flash .34s cubic-bezier(.15,.75,.25,1) both;
 }
 
+.rh-trailer-patrons {
+  position: fixed;
+  z-index: 74;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(180,154,255,.12), transparent 34%),
+    repeating-linear-gradient(112deg, transparent 0 76px, rgba(255,255,255,.025) 77px 78px),
+    #030307;
+  transition: opacity .24s ease;
+}
+
+.rh-trailer-patrons.visible { opacity: 1; }
+
+.rh-patron-roster {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 22px 0;
+}
+
+.rh-patron-roster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.42), transparent 14% 86%, rgba(0,0,0,.42)),
+    linear-gradient(0deg, #030307 0 5%, transparent 26% 64%, rgba(3,3,7,.26));
+}
+
+.rh-patron-roster figure {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  border-left: 1px solid color-mix(in srgb, var(--patron-color) 34%, transparent);
+  opacity: 0;
+  transform: translateY(45px) scale(1.055);
+  filter: saturate(.72) brightness(.72);
+  transition:
+    opacity .45s ease calc(var(--patron-index, 0) * .055s),
+    transform .72s cubic-bezier(.16,.82,.15,1) calc(var(--patron-index, 0) * .055s),
+    filter .7s ease calc(var(--patron-index, 0) * .055s);
+}
+
+.rh-patron-roster figure:nth-child(1) { --patron-index: 0; }
+.rh-patron-roster figure:nth-child(2) { --patron-index: 1; }
+.rh-patron-roster figure:nth-child(3) { --patron-index: 2; }
+.rh-patron-roster figure:nth-child(4) { --patron-index: 3; }
+.rh-patron-roster figure:nth-child(5) { --patron-index: 4; }
+.rh-patron-roster figure:nth-child(6) { --patron-index: 5; }
+.rh-patron-roster figure:nth-child(7) { --patron-index: 6; }
+.rh-patron-roster .patron-blind-star { --patron-color: #b49aff; }
+.rh-patron-roster .patron-white-raven { --patron-color: #e7edf5; }
+.rh-patron-roster .patron-red-sun { --patron-color: #ff754f; }
+.rh-patron-roster .patron-sleeping-moon { --patron-color: #8fdfff; }
+.rh-patron-roster .patron-spore-mother { --patron-color: #8ee66b; }
+.rh-patron-roster .patron-thunder-beast { --patron-color: #76dfff; }
+.rh-patron-roster .patron-stargazer { --patron-color: #ffd166; }
+
+.rh-trailer-patrons.visible figure {
+  opacity: .88;
+  transform: translateY(0) scale(1);
+  filter: saturate(.9) brightness(.88);
+}
+
+.rh-patron-roster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  transform: scale(1.035);
+}
+
+.rh-patron-roster figcaption {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  color: #fff;
+  font: 800 13px/1 var(--font-ui);
+  letter-spacing: .22em;
+  text-shadow: 0 2px 16px #000, 0 0 14px var(--patron-color);
+}
+
+.rh-patron-roster-copy {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: min(930px, 84vw);
+  padding: 25px 34px 28px;
+  text-align: center;
+  transform: translate(-50%,-42%);
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(3,3,7,.9) 14% 86%, transparent);
+  transition: opacity .35s ease .5s, transform .5s cubic-bezier(.18,.8,.18,1) .45s;
+}
+
+.rh-patron-roster-copy::before,
+.rh-patron-roster-copy::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: min(690px, 72vw);
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, #ffd166, transparent);
+}
+
+.rh-patron-roster-copy::before { top: 0; }
+.rh-patron-roster-copy::after { bottom: 0; }
+.rh-trailer-patrons.visible .rh-patron-roster-copy { opacity: 1; transform: translate(-50%,-50%); }
+.rh-patron-roster-copy span { color: #ffd166; font: 800 10px/1 ui-monospace, Consolas, monospace; letter-spacing: .28em; }
+.rh-patron-roster-copy strong { display: block; margin-top: 13px; color: #fff; font: 800 clamp(46px, 5.4vw, 84px)/.96 var(--font-display); letter-spacing: -.045em; text-shadow: 0 4px 28px #000; }
+.rh-patron-roster-copy p { margin: 13px 0 0; color: #ddd9e5; font: 650 clamp(12px, 1.15vw, 19px)/1.4 var(--font-ui); letter-spacing: .12em; text-shadow: 0 2px 15px #000; }
+
 .rh-trailer-flash.soft.fire {
   animation-duration: .48s;
   opacity: .45;

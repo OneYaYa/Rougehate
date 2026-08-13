@@ -12,12 +12,28 @@ class TrailerContractTests(unittest.TestCase):
     def test_director_mode_shows_complete_run_loop(self):
         self.assertIn("state.running = false;", TRAILER)
         self.assertIn("openArchetypeSelection();", TRAILER)
-        self.assertIn('openUpgrade("upgrade");', TRAILER)
+        self.assertIn("showPatronRoster();", TRAILER)
+        self.assertIn("void showCeremony({", TRAILER)
         self.assertIn("openForge(4);", TRAILER)
         self.assertIn("showWeaponResult(previewWeapon", TRAILER)
         self.assertIn("showMutationChoice();", TRAILER)
         for stage in ("stageHunterBuild();", "stageStormBuild();", "stageSingularityBuild();"):
             self.assertIn(stage, TRAILER)
+
+    def test_director_mode_showcases_all_patron_portraits_and_boon_count(self):
+        for portrait in (
+            "blind-star.webp", "white-raven.webp", "red-sun.webp", "sleeping-moon.webp",
+            "spore-mother.webp", "thunder-beast.webp", "stargazer.webp",
+        ):
+            self.assertIn(f"assets/patrons/{portrait}", TRAILER)
+        self.assertIn("7 位独特宇宙神祇", TRAILER)
+        self.assertIn("63 项专属赐福", TRAILER)
+        self.assertIn("function showPatronRoster()", TRAILER)
+        self.assertIn('title: "太阳的指纹"', TRAILER)
+        self.assertIn(".rh-trailer-patrons", TRAILER_CSS)
+        self.assertIn('title: evolvedWeapon.name', TRAILER)
+        self.assertIn('weapon: evolvedWeapon', TRAILER)
+        self.assertIn('mode: "mutation"', TRAILER)
 
     def test_showcase_build_uses_distinct_vfx_signatures(self):
         for variant in (2, 6, 21, 23):

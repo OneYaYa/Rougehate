@@ -321,9 +321,11 @@ SYSTEM_PROMPT = """你是肉鸽动作游戏《ROUGE HATE》的武器设计编译
 - 完整保留愿望的核心幻想，同时只通过伤害、攻击间隔、数量、范围等数字让它在幸存者类游戏中平衡。
 - 世界观属于深空远征与异星生态；名称和描述可使用星核、虫洞、星云科技等意象，但玩家明确要求的具体武器仍必须清楚可辨。
 - 参考当前武器的标签与效果，优先创造能形成流派协同、但不会重复已有定位的新武器。
+- recommendation_mode 为 true 时，玩家没有亲自写愿望；结合 current_combat_state、当前武器与阶段预算主动补足最明显短板，仍需生成完整且有鲜明机制的武器。
 - 这是整局四次的“新增武器重构”，不是升级已有武器；结果必须提供一种可同时运行的新攻击手段。
 - forge_tier 1/2/3/4 的强度严格递增。围绕 target_power_budget 设计数值；极端愿望要改编成强烈特色，而不是无条件秒杀。
 - projectile 是离开玩家并飞行的攻击；beam 是瞬时光束；aura 是玩家周围周期范围伤害；orbit 仅在玩家明确要求环绕/卫星时使用；melee 是角色前方的近战挥砍。
+- 同时要求“环绕待机”和“自动追踪”时必须输出 projectile + homing；系统会将其解释为先在身边组成环阵、攻击时离体追敌。绝不能输出固定 orbit。
 - trajectory 决定真实运动：homing 主动追敌、boomerang 折返、spiral 旋转、wave 蛇形、skyfall 从目标上空落下。targeting 严格服从玩家说的最近/最强/敌群/随机目标。
 - visual_form 决定玩家真正看到的实体模型，必须贴合愿望：枪械用 rifle/cannon，刀剑用 blade/daggers，弓用 bow，法器用 staff/orb/tome，机械召唤物用 drone。
 - 非 projectile 仍需填写全部字段；用合理值填写暂时无效的字段。
@@ -404,6 +406,71 @@ def weapon_score(weapon: dict[str, Any]) -> float:
     return weapon["damage"] / weapon["cooldown"] * count_factor * utility
 
 
+TRACKING_WORDS = (
+    "自动追踪", "主动追踪", "追踪敌", "追击敌", "自动追敌", "自动索敌", "锁定敌",
+    "homing", "seek enemies", "track enemies", "tracking",
+)
+ORBIT_WORDS = ("围绕", "环绕", "环阵", "绕着", "护体", "卫星", "无人机", "orbit", "orbital", "drone")
+FLYING_BLADE_WORDS = ("飞剑", "飞刃", "飞刀", "御剑", "flying sword", "flying blade")
+PIERCE_WORDS = ("穿透", "贯穿", "穿刺", "pierce", "penetrate")
+
+
+def wish_contains(wish: str, words: tuple[str, ...]) -> bool:
+    normalized = str(wish).lower()
+    return any(word in normalized for word in words)
+
+
+def requested_projectile_count(wish: str) -> int | None:
+    normalized = str(wish).lower()
+    match = re.search(r"([1-8])\s*(?:根|柄|把|枚|个|支|swords?|blades?|projectiles?)", normalized)
+    if match:
+        return int(match.group(1))
+    chinese_counts = {"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8}
+    for character, count in chinese_counts.items():
+        if re.search(rf"{character}\s*(?:根|柄|把|枚|个|支)(?:飞剑|飞刃|飞刀|剑|刃|刀)?", normalized):
+            return count
+    return None
+
+
+def enforce_wish_semantics(weapon: dict[str, Any], wish: str) -> None:
+    """Turn explicit movement words into runtime behavior, even if model classification drifts."""
+    tracking = wish_contains(wish, TRACKING_WORDS)
+    orbit = wish_contains(wish, ORBIT_WORDS)
+    flying_blade = wish_contains(wish, FLYING_BLADE_WORDS)
+    piercing = wish_contains(wish, PIERCE_WORDS)
+    weapon["orbit_launch"] = bool(tracking and orbit)
+    if not tracking:
+        return
+
+    # A tracking attack must leave the player. `orbit` is reserved for fixed
+    # satellites, while orbit_launch means a visible ready circle that releases
+    # real homing projectiles.
+    weapon["delivery"] = "projectile"
+    weapon["trajectory"] = "homing"
+    weapon["homing"] = max(.9, float(weapon.get("homing", 0)))
+    weapon["range"] = max(480, float(weapon.get("range", 480)))
+    weapon["projectile_speed"] = max(360, float(weapon.get("projectile_speed", 360)))
+    requested_count = requested_projectile_count(wish)
+    if requested_count is not None:
+        weapon["projectile_count"] = requested_count
+    if piercing:
+        weapon["pierce"] = max(3, int(weapon.get("pierce", 0)))
+    if flying_blade:
+        weapon["visual_form"] = "blade"
+        count = int(weapon.get("projectile_count", 1))
+        opening = f"{count}柄飞剑先在身边组成环阵，随后离体" if weapon["orbit_launch"] else f"{count}柄飞剑离体"
+        continuation = "，贯穿目标后继续追踪下一名未命中敌人" if piercing else "并主动追踪敌人"
+        authored_summary = str(weapon.get("behavior_summary", ""))
+        authored_is_executable = (
+            any(word in authored_summary for word in ("离开", "离体", "飞离"))
+            and any(word in authored_summary for word in ("追踪", "追击", "索敌"))
+        )
+        if orbit or piercing or not authored_is_executable:
+            weapon["behavior_summary"] = f"{opening}{continuation}。"
+            weapon["description"] = weapon["behavior_summary"]
+        weapon["tags"] = list(dict.fromkeys(["飞剑", "自动追踪", *(weapon.get("tags") or [])]))[:4]
+
+
 def rebalance_weapon(
     raw: dict[str, Any], level: int, forge_tier: int | None = None, wish: str = "",
 ) -> tuple[dict[str, Any], list[str]]:
@@ -438,6 +505,8 @@ def rebalance_weapon(
     for field, (lower, upper) in NUMERIC_LIMITS.items():
         value = clamp(weapon.get(field), lower, upper)
         weapon[field] = int(round(value)) if field in integer_fields else round(value, 3)
+
+    enforce_wish_semantics(weapon, wish)
 
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(weapon.get("color", ""))):
         weapon["color"] = "#ff4f8b"
@@ -637,6 +706,11 @@ def offline_mutations(
 def offline_weapon(wish: str, level: int) -> dict[str, Any]:
     """Keyword-based fallback keeps the prototype playable without a key."""
     normalized = wish.lower()
+    tracking_request = wish_contains(wish, TRACKING_WORDS)
+    orbit_request = wish_contains(wish, ORBIT_WORDS)
+    flying_blade_request = wish_contains(wish, FLYING_BLADE_WORDS)
+    pierce_request = wish_contains(wish, PIERCE_WORDS)
+    requested_count = requested_projectile_count(wish)
     seed = int(hashlib.sha256(wish.encode("utf-8")).hexdigest()[:8], 16)
     rng = random.Random(seed)
     palette = ["#ff4f8b", "#58e6ff", "#ffd166", "#a78bfa", "#7cf29a"]
@@ -671,12 +745,31 @@ def offline_weapon(wish: str, level: int) -> dict[str, Any]:
         "tradeoff_text": "属性均衡",
         "tags": ["造物", "投射物"],
     }
-    if any(word in normalized for word in ("巴雷特", "狙", "barrett", "sniper")):
+    if tracking_request and flying_blade_request:
+        count = requested_count or 3
+        weapon.update(
+            name="巡猎剑阵", description="飞剑从角色身边脱离，主动追击并贯穿不同敌人。",
+            delivery="projectile", visual_form="blade", trajectory="homing", targeting="nearest",
+            damage=22, cooldown=.82, projectile_count=count, projectile_speed=430,
+            projectile_size=8, range=580, spread_degrees=10,
+            pierce=3 if pierce_request else 1, crit_chance=.12, knockback=7, homing=.96,
+            color="#58e6ff", tradeoff="low_damage", tradeoff_text="单剑伤害较低",
+            tags=["飞剑", "自动追踪", "贯穿" if pierce_request else "巡猎"],
+            behavior_summary="飞剑离开角色，主动追踪敌人并在命中后寻找下一个目标。",
+            visual_motif="悬浮剑柄与蓝白星轨刃脊",
+        )
+    elif any(word in normalized for word in ("巴雷特", "狙", "barrett", "sniper")):
         weapon.update(name="寂静·巴雷特", description="极慢射速换取高伤害、强击退与贯穿。",
                       visual_form="rifle",
                       damage=118, cooldown=2.35, projectile_speed=720, projectile_size=8,
                       pierce=5, crit_chance=0.30, knockback=24, homing=0,
                       tradeoff="slow_fire", tradeoff_text="开火间隔很长", tags=["重型", "贯穿", "狙击"])
+    elif orbit_request or flying_blade_request:
+        weapon.update(name="四象飞刃", description="数枚飞刃环绕自身，持续切割靠近的敌人。",
+                      visual_form="drone" if any(w in normalized for w in ("无人机", "drone")) else "blade",
+                      delivery="orbit", damage=20, cooldown=0.58, projectile_count=requested_count or 4,
+                      projectile_size=10, range=118, pierce=0, homing=0,
+                      color="#ffd166", tags=["环绕", "飞刃"])
     elif (any(word in normalized for word in ("剑", "刀", "近战", "勇士", "warrior", "blade", "melee"))
           and not any(word in normalized for word in ("匕首", "双刀", "刺客", "dagger", "assassin"))):
         weapon.update(name="猩红断刃", description="向前挥出宽阔斩击，击退近身的敌群。",
@@ -710,12 +803,6 @@ def offline_weapon(wish: str, level: int) -> dict[str, Any]:
                       projectile_size=12, range=155, slow_percent=0.42, homing=0,
                       color="#a78bfa", tradeoff="short_range", tradeoff_text="只能攻击近处敌人",
                       tags=["领域", "减速"])
-    elif any(word in normalized for word in ("飞剑", "环绕", "orbit", "卫星", "无人机", "drone")):
-        weapon.update(name="四象飞刃", description="数枚飞刃环绕自身，持续切割靠近的敌人。",
-                      visual_form="drone" if any(w in normalized for w in ("无人机", "drone")) else "blade",
-                      delivery="orbit", damage=20, cooldown=0.58, projectile_count=4,
-                      projectile_size=10, range=118, pierce=0, homing=0,
-                      color="#ffd166", tags=["环绕", "飞刃"])
     elif any(word in normalized for word in ("霰弹", "散弹", "shotgun", "炮", "cannon")):
         weapon.update(name="暴雨霰射", description="向前方扇形喷出多枚近程弹丸。",
                       visual_form="cannon",
@@ -936,6 +1023,45 @@ def call_structured_openai(
     return json.loads(extract_output_text(result))
 
 
+def sanitize_combat_state(raw: Any) -> dict[str, Any]:
+    source = raw if isinstance(raw, dict) else {}
+    tags = source.get("build_tags", [])
+    if not isinstance(tags, list):
+        tags = []
+    return {
+        "stage": int(clamp(source.get("stage", 1), 1, 3)),
+        "stage_progress": round(clamp(source.get("stage_progress", 0), 0, 1), 3),
+        "hp_ratio": round(clamp(source.get("hp_ratio", 1), 0, 1), 3),
+        "enemy_count": int(clamp(source.get("enemy_count", 0), 0, 400)),
+        "elite_count": int(clamp(source.get("elite_count", 0), 0, 20)),
+        "boss_active": bool(source.get("boss_active", False)),
+        "boss_hp_ratio": round(clamp(source.get("boss_hp_ratio", 1), 0, 1), 3),
+        "difficulty": str(source.get("difficulty", "normal"))[:16],
+        "build_tags": [str(tag)[:16] for tag in tags[:12]],
+    }
+
+
+def recommended_weapon_wish(
+    combat_state: dict[str, Any], loadout: list[dict[str, Any]], forge_tier: int,
+) -> str:
+    """Build a concrete brief from current gaps; OpenAI still authors the final weapon."""
+    deliveries = {str(weapon.get("delivery", "")) for weapon in loadout if isinstance(weapon, dict)}
+    trajectories = {str(weapon.get("trajectory", "")) for weapon in loadout if isinstance(weapon, dict)}
+    total_pierce = sum(int(clamp(weapon.get("pierce", 0), 0, 7)) for weapon in loadout if isinstance(weapon, dict))
+    pressure = combat_state["enemy_count"] + combat_state["elite_count"] * 5
+    if "homing" not in trajectories and (pressure >= 16 or combat_state["stage"] >= 2):
+        return "三柄离体后自动追踪并贯穿不同敌人的星轨飞剑，待机时在角色身边组成环阵"
+    if combat_state["hp_ratio"] <= .42 and "aura" not in deliveries:
+        return "能击退并减速近身敌群的护体引力场，为低生命状态争取生存空间"
+    if combat_state["boss_active"] and "beam" not in deliveries:
+        return "对单个强敌持续校准的高暴击贯穿星束，牺牲射速换取首领伤害"
+    if total_pierce <= 1 and pressure >= 10:
+        return "自动索敌并连续贯穿密集敌群的三枚相位飞刃"
+    if "melee" not in deliveries and forge_tier >= 3:
+        return "近身时横扫敌群并强力击退的重型星核巨刃"
+    return "根据当前武器与阶段压力补足最明显短板，并避免重复已有攻击形态的新武器"
+
+
 def call_openai(
     wish: str,
     level: int,
@@ -943,6 +1069,8 @@ def call_openai(
     session_id: str,
     forge_tier: int = 1,
     archetype: dict[str, Any] | None = None,
+    combat_state: dict[str, Any] | None = None,
+    recommendation_mode: bool = False,
 ) -> dict[str, Any]:
     forge_tier = int(clamp(forge_tier, 1, 4))
     archetype = archetype if isinstance(archetype, dict) else {}
@@ -953,6 +1081,8 @@ def call_openai(
         "forge_tier": forge_tier,
         "forge_role": str(archetype.get("role", ""))[:12],
         "forge_trait": str(archetype.get("trait", ""))[:12],
+        "recommendation_mode": bool(recommendation_mode),
+        "current_combat_state": sanitize_combat_state(combat_state),
         "current_weapons": [
             {
                 "name": str(w.get("name", ""))[:18],
@@ -961,6 +1091,8 @@ def call_openai(
                 "visual_form": str(w.get("visual_form", ""))[:12],
                 "trajectory": str(w.get("trajectory", "straight"))[:12],
                 "targeting": str(w.get("targeting", "nearest"))[:12],
+                "homing": round(clamp(w.get("homing", 0), 0, 1), 3),
+                "orbit_launch": bool(w.get("orbit_launch", False)),
                 "has_burn": clamp(w.get("burn_damage", 0), 0, 18) > 0,
                 "has_poison": clamp(w.get("poison_damage", 0), 0, 18) > 0,
                 "has_slow": clamp(w.get("slow_percent", 0), 0, 0.6) > 0,
@@ -1185,9 +1317,6 @@ class GameHandler(SimpleHTTPRequestHandler):
                 })
                 return
 
-            wish = str(body.get("wish", "")).strip()
-            if not wish or len(wish) > 180:
-                raise ValueError("愿望需要 1–180 个字符")
             level = int(clamp(body.get("level", 1), 1, 99))
             forge_tier = int(clamp(body.get("forgeTier", 1), 1, 4))
             loadout = body.get("loadout", [])
@@ -1196,8 +1325,18 @@ class GameHandler(SimpleHTTPRequestHandler):
             archetype = body.get("archetype", {})
             if not isinstance(archetype, dict):
                 archetype = {}
+            recommendation_mode = body.get("recommend") is True
+            combat_state = sanitize_combat_state(body.get("combatState", {}))
+            wish = str(body.get("wish", "")).strip()
+            if recommendation_mode:
+                wish = recommended_weapon_wish(combat_state, loadout, forge_tier)
+            if not wish or len(wish) > 180:
+                raise ValueError("愿望需要 1–180 个字符")
             if os.getenv("OPENAI_API_KEY", "").strip():
-                raw_weapon = call_openai(wish, level, loadout, session_id, forge_tier, archetype)
+                raw_weapon = call_openai(
+                    wish, level, loadout, session_id, forge_tier, archetype,
+                    combat_state, recommendation_mode,
+                )
                 source = "openai"
             else:
                 raw_weapon = offline_weapon(wish, level)
@@ -1207,6 +1346,7 @@ class GameHandler(SimpleHTTPRequestHandler):
                 "weapon": weapon,
                 "source": source,
                 "adjustments": adjustments,
+                "recommendationWish": wish if recommendation_mode else "",
             })
         except (ValueError, json.JSONDecodeError) as error:
             self.json_response(HTTPStatus.BAD_REQUEST, {"error": str(error)})

@@ -213,6 +213,12 @@ def build_soundtrack(path: Path) -> None:
     # 31.05–34.35: weapon evolution returns to half-time without losing tension.
     rhythm(31.05, 34.35, 108, .35, .028)
     add_riser(track, 31.92, 2.43, .18, 702)
+    # Three hard diagnostic locks follow the visible SCAN / DECOMPOSE / LOCK
+    # rail in the dedicated AI weapon blueprint ceremony.
+    for index, at in enumerate((32.98, 33.31, 33.64)):
+        add_noise(track, at, .055, .082, 62, pan=(-.34, 0, .34)[index], seed=720 + index)
+        add_tone(track, at, .16, (310, 465, 698)[index], .048, 12,
+                 pan=(-.34, 0, .34)[index], harmonics=(1, .3))
 
     # 34.35–46.00: three late-game builds escalate without interrupting the drop.
     rhythm(34.35, 46.00, 168, .94, .13, True)

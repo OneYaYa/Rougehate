@@ -44,6 +44,39 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertIn("主动追击", weapon["behavior_summary"])
         self.assertLessEqual(weapon["balance_score"], weapon["budget"])
 
+    def test_orbiting_tracking_flying_swords_release_and_retarget(self):
+        wish = "围绕我旋转的三根飞剑，可以自动追踪穿透敌人"
+        weapon, _ = server.rebalance_weapon(server.offline_weapon(wish, level=2), 2, 1, wish)
+        self.assertEqual(weapon["delivery"], "projectile")
+        self.assertEqual(weapon["visual_form"], "blade")
+        self.assertEqual(weapon["trajectory"], "homing")
+        self.assertEqual(weapon["projectile_count"], 3)
+        self.assertGreaterEqual(weapon["homing"], .9)
+        self.assertGreaterEqual(weapon["pierce"], 3)
+        self.assertTrue(weapon["orbit_launch"])
+        self.assertIn("离体", weapon["behavior_summary"])
+        self.assertIn("下一名未命中敌人", weapon["behavior_summary"])
+
+    def test_fixed_orbit_is_not_confused_with_tracking_release(self):
+        wish = "三根飞剑固定围绕我旋转并切割靠近的敌人"
+        weapon, _ = server.rebalance_weapon(server.offline_weapon(wish, level=2), 2, 1, wish)
+        self.assertEqual(weapon["delivery"], "orbit")
+        self.assertNotEqual(weapon["trajectory"], "homing")
+        self.assertFalse(weapon["orbit_launch"])
+
+    def test_system_recommendation_uses_combat_pressure_and_build_gaps(self):
+        combat_state = server.sanitize_combat_state({
+            "stage": 2, "enemy_count": 28, "elite_count": 2, "hp_ratio": .7,
+            "build_tags": ["ballistic"],
+        })
+        wish = server.recommended_weapon_wish(
+            combat_state,
+            [{"delivery": "beam", "trajectory": "straight", "pierce": 0}],
+            2,
+        )
+        self.assertIn("自动追踪", wish)
+        self.assertIn("环阵", wish)
+
     def test_poison_and_fire_are_separate_numeric_statuses(self):
         poisoned, _ = server.rebalance_weapon(server.offline_weapon("孢子剧毒猎弓", 2), 2, 1, "孢子剧毒猎弓")
         burning, _ = server.rebalance_weapon(server.offline_weapon("燃烧猎弓", 2), 2, 1, "燃烧猎弓")

@@ -46,6 +46,22 @@
     <div class="rh-trailer-vignette"></div>
     <div class="rh-trailer-badge">实机画面</div>
     <div class="rh-trailer-copy"><span class="kicker"></span><strong></strong><p></p></div>
+    <section class="rh-trailer-patrons" aria-label="七位宇宙赐福者">
+      <div class="rh-patron-roster">
+        <figure class="patron-blind-star"><img src="assets/patrons/blind-star.webp" alt=""><figcaption>盲星</figcaption></figure>
+        <figure class="patron-white-raven"><img src="assets/patrons/white-raven.webp" alt=""><figcaption>白鸦</figcaption></figure>
+        <figure class="patron-red-sun"><img src="assets/patrons/red-sun.webp" alt=""><figcaption>赤日</figcaption></figure>
+        <figure class="patron-sleeping-moon"><img src="assets/patrons/sleeping-moon.webp" alt=""><figcaption>眠月</figcaption></figure>
+        <figure class="patron-spore-mother"><img src="assets/patrons/spore-mother.webp" alt=""><figcaption>孢母</figcaption></figure>
+        <figure class="patron-thunder-beast"><img src="assets/patrons/thunder-beast.webp" alt=""><figcaption>雷兽</figcaption></figure>
+        <figure class="patron-stargazer"><img src="assets/patrons/stargazer.webp" alt=""><figcaption>观星人</figcaption></figure>
+      </div>
+      <div class="rh-patron-roster-copy">
+        <span>COSMIC PATRONS / 宇宙赐福者</span>
+        <strong>7 位独特宇宙神祇</strong>
+        <p>63 项专属赐福 · 双神联动 · 传奇赐福</p>
+      </div>
+    </section>
     <div class="rh-trailer-flash"></div>
     <div class="rh-trailer-end">
       <div>
@@ -56,6 +72,7 @@
   document.body.append(layer);
 
   const copy = layer.querySelector(".rh-trailer-copy");
+  const patronRoster = layer.querySelector(".rh-trailer-patrons");
   const flash = layer.querySelector(".rh-trailer-flash");
   const endCard = layer.querySelector(".rh-trailer-end");
   const later = (seconds, task) => window.setTimeout(task, seconds * 1000);
@@ -138,6 +155,17 @@
     ui.upgrade.hidden = true;
     ui.forge.hidden = true;
     ui.gameOver.hidden = true;
+  }
+
+  function showPatronRoster() {
+    state.paused = true;
+    hideModals();
+    clearCaption();
+    patronRoster.classList.add("visible");
+  }
+
+  function hidePatronRoster() {
+    patronRoster.classList.remove("visible");
   }
 
   function mutation(mechanic, title, color) {
@@ -400,7 +428,8 @@
     state.rewardQueue = [];
     state.bossSpawned = [true, true, Boolean(includeBoss)];
     state.forgeOpened = [true, true, true, true];
-    state.encounterTriggered = Array(6).fill(true);
+    state.encounterTriggered = Array(ENCOUNTER_SLOT_COUNT).fill(true);
+    state.encounterTypes = Array(ENCOUNTER_SLOT_COUNT).fill("director");
     state.openingWaveRemaining = 0;
     player.invulnerable = 999;
     player.hp = player.maxHp;
@@ -575,7 +604,8 @@
   later(9.72, () => drive("KeyD", "KeyW"));
   later(10.32, () => dash("KeyD", "KeyW"));
 
-  // 10.9–13.9 — A readable roguelite decision instead of another smash cut.
+  // 10.9–13.9 — Seven original patrons arrive as a complete visual roster,
+  // then one boon lands through the same full-screen ceremony used in play.
   later(10.88, () => {
     hit("#ffd166");
     drive();
@@ -583,13 +613,21 @@
     zoom();
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
-    state.level = 7;
-    openUpgrade("upgrade");
-    ui.upgrade.querySelector(".chapter").textContent = "选择强化";
-    ui.upgradeTitle.textContent = "构筑本局";
-    ui.upgradeSubtitle.textContent = "三选一";
-    ui.upgradeOptions.querySelectorAll(".upgrade-rarity").forEach((label) => {
-      label.textContent = label.textContent.split("/").at(-1).trim();
+    showPatronRoster();
+  });
+  later(12.42, () => {
+    hidePatronRoster();
+    hit("#ff754f", "soft");
+    void showCeremony({
+      type: "patron",
+      profile: ceremonyProfiles.blaze,
+      seed: "trailer-red-sun-boon",
+      kicker: "PATRON BOON / 赤日",
+      title: "太阳的指纹",
+      subtitle: "“喜欢看尸体继续燃烧。” · COMMON / 普通",
+      sigil: "♨",
+      patron: patronDefinitions.blaze,
+      duration: 1080,
     });
   });
 
@@ -597,6 +635,7 @@
   // moment the fast-moving ring is about to touch the stationary player.
   later(13.88, () => {
     hit("#ff365f");
+    hidePatronRoster();
     clearCaption();
     stageLastStand();
     body.classList.add("trailer-focus-combat");
@@ -693,7 +732,8 @@
   later(30.02, () => drive("KeyD", "KeyS"));
   later(30.58, () => dash("KeyD", "KeyS"));
 
-  // 31.1–34.4 — The same weapon can keep mutating during the run.
+  // 31.1–34.4 — The same weapon keeps mutating. Selection cuts into the
+  // dedicated blueprint-compilation ceremony before the evolved build fires.
   later(31.05, () => {
     hit("#b06cff");
     drive();
@@ -702,9 +742,24 @@
     resizeCanvas();
     showMutationChoice();
   });
-  later(33.74, () => {
+  later(32.68, () => {
     const cards = ui.upgradeOptions.querySelectorAll(".mutation-card");
     cards[0]?.classList.add("trailer-selected");
+  });
+  later(32.92, () => {
+    const evolvedWeapon = starSwarmWeapon();
+    evolvedWeapon.name = "事件视界";
+    evolvedWeapon.color = "#b06cff";
+    evolvedWeapon.secondary_color = "#f0d8ff";
+    evolvedWeapon.visual_variant = 21;
+    void playAICeremony({
+      title: evolvedWeapon.name,
+      subtitle: "追猎协议重构 · 折返轨道锁定",
+      color: evolvedWeapon.color,
+      mode: "mutation",
+      weapon: evolvedWeapon,
+      duration: 1240,
+    });
   });
 
   // 34.4–46.0 — Three different late-game builds, each with its own combat

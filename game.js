@@ -45,7 +45,7 @@ const ui = {
   wishForm: $("#wishForm"),
   wishInput: $("#wishInput"),
   charCount: $("#charCount"),
-  skip: $("#skipButton"),
+  recommend: $("#recommendButton"),
   forgeButton: $("#forgeButton"),
   forgeLoading: $("#forgeLoading"),
   loadingStatus: $("#loadingStatus"),
@@ -90,6 +90,19 @@ const ui = {
   upgradeOptions: $("#upgradeOptions"),
   upgradeRerolls: $("#upgradeRerolls"),
   reroll: $("#rerollButton"),
+  ceremony: $("#upgradeCeremony"),
+  ceremonyParticles: $("#ceremonyParticles"),
+  ceremonyPortrait: $("#ceremonyPortrait"),
+  ceremonyPortraitSecondary: $("#ceremonyPortraitSecondary"),
+  ceremonyPatronName: $("#ceremonyPatronName"),
+  ceremonyAiBlueprint: $("#ceremonyAiBlueprint"),
+  ceremonyAiWeaponCanvas: $("#ceremonyAiWeaponCanvas"),
+  ceremonyAiForm: $("#ceremonyAiForm"),
+  ceremonyAiCode: $("#ceremonyAiCode"),
+  ceremonySigil: $("#ceremonySigil"),
+  ceremonyKicker: $("#ceremonyKicker"),
+  ceremonyTitle: $("#ceremonyTitle"),
+  ceremonySubtitle: $("#ceremonySubtitle"),
   gameOverTitle: $("#gameOverTitle"),
   gameOverSummary: $("#gameOverSummary"),
   finalLevel: $("#finalLevel"),
@@ -143,9 +156,11 @@ const openingWaveSizes = [8];
 const stageHealthScales = [1.08, 1.62, 2.75];
 const stageSpawnPressure = [1.28, 1.08, 1];
 const stageEncounters = [
-  { offset: 50 },
-  { offset: 110 },
+  { offset: 46, kind: "random" },
+  { offset: 90, kind: "mid_elite" },
+  { offset: 132, kind: "random" },
 ];
+const ENCOUNTER_SLOT_COUNT = stages.length * stageEncounters.length;
 const randomEncounterDefinitions = [
   { id: "migration", kicker: "MIGRATION SURGE", title: "高速星兽迁徙潮" },
   { id: "elite", kicker: "ELITE HUNT", title: "高危星兽狩猎" },
@@ -153,6 +168,33 @@ const randomEncounterDefinitions = [
   { id: "courier", kicker: "MOVING TARGET", title: "截获移动星核信使" },
   { id: "rift", kicker: "GRAVITY FRONT", title: "移动引力裂隙横扫" },
   { id: "memory", kicker: "MEMORY TIDE", title: "认知潮汐正在回流" },
+];
+const stageEliteSquads = [
+  {
+    kicker: "MID-STAGE NEMESIS",
+    title: "蓝幕双生执政官",
+    members: [
+      { type: "shield_jelly", name: "蓝幕执政官·折光冠", hpScale: 3.4, radiusScale: 1.58, damageScale: 1.28, speedScale: .9, xpScale: 4.8, color: "#2edcff", accent: "#e2ffff", cacheChance: .34 },
+      { type: "pulse_wasp", name: "裂光蜂后·第七码", hpScale: 4, radiusScale: 1.72, damageScale: 1.35, speedScale: .82, xpScale: 5.2, color: "#ff4fd8", accent: "#fff0ff", cacheChance: .18 },
+    ],
+  },
+  {
+    kicker: "MIGRATION ALPHAS",
+    title: "迁徙母巢与攻城兽",
+    members: [
+      { type: "spore_mother", name: "紫孢母皇·万巢", hpScale: 3.1, radiusScale: 1.56, damageScale: 1.3, speedScale: .88, xpScale: 4.6, color: "#b858f2", accent: "#ffd0ff", cacheChance: .32 },
+      { type: "void_boar", name: "赤核攻城兽·裂陆", hpScale: 3.35, radiusScale: 1.52, damageScale: 1.38, speedScale: 1.06, xpScale: 4.8, color: "#ff6657", accent: "#ffd06f", cacheChance: .2 },
+    ],
+  },
+  {
+    kicker: "HATEFUL TRIUMVIRATE",
+    title: "奇点三重禁卫",
+    members: [
+      { type: "thunder_orb", name: "雷鸣主星·赫兹", hpScale: 2.45, radiusScale: 1.42, damageScale: 1.3, speedScale: .92, xpScale: 4.2, color: "#ffc247", accent: "#fff4b0", cacheChance: .28 },
+      { type: "void_bulwark", name: "虚空禁卫·零号墙", hpScale: 2.85, radiusScale: 1.52, damageScale: 1.26, speedScale: .86, xpScale: 4.4, color: "#8d5dce", accent: "#ead8ff", cacheChance: .2 },
+      { type: "hate_weaver", name: "憎恨织主·红寂", hpScale: 3.05, radiusScale: 1.58, damageScale: 1.34, speedScale: .9, xpScale: 4.7, color: "#ff3f63", accent: "#ffd0db", cacheChance: .18 },
+    ],
+  },
 ];
 const roleSkills = {
   warrior: { name: "恒星震荡", cooldown: 6.8, description: "震开近身星兽并获得短暂无敌" },
@@ -193,7 +235,7 @@ enemyAtlas.decoding = "async";
 enemyAtlas.src = "assets/enemies/cosmic-bestiary-v2.png";
 const difficultyModes = {
   normal: { label: "标准航线", health: 1, damage: 1, spawn: 1, reward: 1 },
-  hate: { label: "憎恨航线", health: 1.35, damage: 1.25, spawn: 1.35, reward: 1.5 },
+  hate: { label: "深空航线", health: 1.35, damage: 1.25, spawn: 1.35, reward: 1.5 },
 };
 
 function loadProfile() {
@@ -220,22 +262,56 @@ class SynthAudio {
   constructor(enabled) {
     this.enabled = enabled;
     this.context = null;
+    this.master = null;
     this.lastHit = 0;
     this.lastShot = 0;
     this.lastPickup = 0;
     this.lastZone = 0;
+    this.scoreMode = "idle";
+    this.scoreStep = 0;
+    this.nextMusicAt = 0;
+    this.nextAmbientAt = 0;
   }
 
   wake() {
     if (!this.enabled) return;
     this.context ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (!this.master) {
+      this.master = this.context.createGain();
+      this.master.gain.value = .82;
+      this.master.connect(this.context.destination);
+    }
     if (this.context.state === "suspended") this.context.resume();
+  }
+
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    if (this.enabled) {
+      this.wake();
+      if (this.master && this.context) this.master.gain.setTargetAtTime(.82, this.context.currentTime, .025);
+      this.resetScore();
+    } else if (this.master && this.context) {
+      this.master.gain.setTargetAtTime(.0001, this.context.currentTime, .025);
+    }
+  }
+
+  resetScore() {
+    this.scoreMode = "idle";
+    this.scoreStep = 0;
+    this.nextMusicAt = 0;
+    this.nextAmbientAt = 0;
+  }
+
+  endScore() {
+    this.scoreMode = "idle";
+    this.nextMusicAt = Number.POSITIVE_INFINITY;
+    this.nextAmbientAt = Number.POSITIVE_INFINITY;
   }
 
   tone(frequency, duration = 0.08, type = "sine", volume = 0.025, slide = 0) {
     if (!this.enabled) return;
     this.wake();
-    if (!this.context) return;
+    if (!this.context || !this.master) return;
     const now = this.context.currentTime;
     const oscillator = this.context.createOscillator();
     const gain = this.context.createGain();
@@ -244,9 +320,133 @@ class SynthAudio {
     oscillator.frequency.exponentialRampToValueAtTime(Math.max(30, frequency + slide), now + duration);
     gain.gain.setValueAtTime(volume, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    oscillator.connect(gain).connect(this.context.destination);
+    oscillator.connect(gain).connect(this.master);
     oscillator.start(now);
     oscillator.stop(now + duration);
+  }
+
+  pad(frequency, duration = 1.4, volume = .006, type = "sine", detune = 0) {
+    if (!this.enabled) return;
+    this.wake();
+    if (!this.context || !this.master) return;
+    const now = this.context.currentTime;
+    const oscillator = this.context.createOscillator();
+    const filter = this.context.createBiquadFilter();
+    const gain = this.context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.value = Math.max(28, frequency);
+    oscillator.detune.value = detune;
+    filter.type = "lowpass";
+    filter.frequency.value = Math.min(1800, Math.max(240, frequency * 7));
+    filter.Q.value = .7;
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(Math.max(.0002, volume), now + Math.min(.16, duration * .18));
+    gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+    oscillator.connect(filter).connect(gain).connect(this.master);
+    oscillator.start(now);
+    oscillator.stop(now + duration + .03);
+  }
+
+  ambientWash(stageIndex, intensity = .5) {
+    if (!this.enabled) return;
+    this.wake();
+    if (!this.context || !this.master) return;
+    const roots = [55, 65.41, 43.65];
+    const root = roots[Math.max(0, Math.min(2, stageIndex))];
+    const duration = 1.65 + stageIndex * .28;
+    this.pad(root, duration, .0038 + intensity * .0025, "sine", -6);
+    this.pad(root * (stageIndex === 2 ? 1.414 : 1.498), duration * .86, .0024 + intensity * .0015, "triangle", 7);
+
+    const sampleCount = Math.floor(this.context.sampleRate * .72);
+    const buffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < sampleCount; index += 1) data[index] = (Math.random() * 2 - 1) * (1 - index / sampleCount);
+    const source = this.context.createBufferSource();
+    const filter = this.context.createBiquadFilter();
+    const gain = this.context.createGain();
+    filter.type = "bandpass";
+    filter.frequency.value = [1050, 720, 430][stageIndex] || 720;
+    filter.Q.value = 1.1 + stageIndex * .35;
+    gain.gain.setValueAtTime(.0001, this.context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.0015 + intensity * .0016, this.context.currentTime + .08);
+    gain.gain.exponentialRampToValueAtTime(.0001, this.context.currentTime + .72);
+    source.buffer = buffer;
+    source.connect(filter).connect(gain).connect(this.master);
+    source.start();
+  }
+
+  stageShift(stageIndex) {
+    this.scoreMode = "idle";
+    this.nextMusicAt = 0;
+    this.nextAmbientAt = 0;
+    const root = [55, 65.41, 43.65][stageIndex] || 55;
+    this.pad(root, 1.25, .009, "triangle", -5);
+    this.pad(root * 1.5, 1.05, .005, "sine", 5);
+  }
+
+  threat(stageIndex = 0) {
+    const root = [92.5, 82.41, 69.3][stageIndex] || 82.41;
+    this.tone(root, .28, "sawtooth", .025, -18);
+    this.tone(root * 1.5, .18, "triangle", .012, 45);
+  }
+
+  updateScore(gameState, boss, enemyCount) {
+    if (!this.enabled || !gameState.running || gameState.paused) return;
+    this.wake();
+    if (!this.context || this.context.state !== "running") return;
+    const stageIndex = Math.max(0, Math.min(2, gameState.stageIndex || 0));
+    const mode = boss ? `boss-${boss.bossIndex}` : `stage-${stageIndex}`;
+    const now = performance.now();
+    if (mode !== this.scoreMode) {
+      this.scoreMode = mode;
+      this.scoreStep = 0;
+      this.nextMusicAt = now;
+      this.nextAmbientAt = now + 900;
+      this.ambientWash(stageIndex, boss ? .9 : .48);
+    }
+
+    const stageProgress = Math.max(0, Math.min(1, (gameState.time - stageIndex * STAGE_DURATION) / STAGE_DURATION));
+    const pressure = Math.max(0, Math.min(1, enemyCount / (42 + stageIndex * 12)));
+    if (now >= this.nextMusicAt) {
+      if (boss) {
+        const roots = [49, 43.65, 36.71];
+        const patterns = [
+          [0, 0, 7, 1, 0, 10, 6, 1],
+          [0, 3, 0, 8, 1, 7, 3, 10],
+          [0, 1, 6, 0, 7, 1, 13, 6],
+        ];
+        const bossIndex = Math.max(0, Math.min(2, boss.bossIndex || 0));
+        const hpRatio = Math.max(0, boss.hp / Math.max(1, boss.maxHp));
+        const enraged = hpRatio < .42;
+        const note = patterns[bossIndex][this.scoreStep % patterns[bossIndex].length];
+        const frequency = roots[bossIndex] * Math.pow(2, note / 12);
+        this.tone(frequency, .18, "sawtooth", .0095 + (1 - hpRatio) * .0035, -9);
+        if (this.scoreStep % 2 === 0) this.pad(frequency / 2, .52, .0038, "sine", bossIndex * 3 - 3);
+        if (this.scoreStep % 4 === 3) this.tone(frequency * 2, .11, "triangle", .0055, 75);
+        const beat = [520, 455, 390][bossIndex] * (enraged ? .76 : 1);
+        this.nextMusicAt = now + beat;
+      } else {
+        const themes = [
+          { root: 55, pattern: [0, 7, 12, 10, 7, 3, 5, 10], beat: 760, type: "sine" },
+          { root: 65.41, pattern: [0, 3, 7, 10, 12, 7, 15, 10], beat: 590, type: "triangle" },
+          { root: 43.65, pattern: [0, 1, 7, 6, 12, 13, 7, 1], beat: 465, type: "sawtooth" },
+        ];
+        const theme = themes[stageIndex];
+        const note = theme.pattern[this.scoreStep % theme.pattern.length];
+        const frequency = theme.root * Math.pow(2, note / 12);
+        const intensity = .28 + pressure * .5 + stageProgress * .22;
+        this.tone(frequency, .12 + stageIndex * .025, theme.type, .0042 + intensity * .0042, stageIndex === 2 ? -12 : 18);
+        if (this.scoreStep % 4 === 0) this.pad(theme.root / 2, .72 + stageIndex * .12, .0028 + intensity * .0018, "sine");
+        if (pressure > .68 && this.scoreStep % 2 === 1) this.tone(frequency * 2, .055, "triangle", .0028, 36);
+        this.nextMusicAt = now + theme.beat * (1 - pressure * .18 - stageProgress * .08);
+      }
+      this.scoreStep += 1;
+    }
+
+    if (now >= this.nextAmbientAt) {
+      this.ambientWash(stageIndex, boss ? .88 : .35 + pressure * .45);
+      this.nextAmbientAt = now + (boss ? 5200 : 7600 - stageIndex * 850) + Math.random() * 1400;
+    }
   }
 
   profileFor(weapon = {}) {
@@ -287,6 +487,45 @@ class SynthAudio {
     this.tone(72 * profile.ratio, .24, profile.type || "sine", .008, profile.slide * .25 + 35);
   }
 
+  relic(profileId = "survival") {
+    const signatures = {
+      ballistic: [392, 587, 880], blaze: [164, 246, 493], cryo: [659, 523, 988],
+      toxin: [146, 220, 330], storm: [220, 740, 1110], gravity: [73, 110, 165],
+      precision: [523, 784, 1175], survival: [262, 392, 523], mobility: [330, 494, 740],
+      economy: [294, 440, 659],
+    };
+    const notes = signatures[profileId] || signatures.survival;
+    notes.forEach((frequency, index) => setTimeout(() => {
+      this.tone(frequency, .16 + index * .035, index === 1 ? "triangle" : "sine", .017 - index * .002, 45 + index * 30);
+    }, index * 72));
+  }
+
+  boon(patronId) {
+    const signatures = {
+      ballistic: { root: 98, notes: [740, 1110, 1480], type: "triangle" },
+      blaze: { root: 82, notes: [164, 246, 493], type: "sawtooth" },
+      cryo: { root: 110, notes: [880, 660, 1320], type: "sine" },
+      toxin: { root: 73, notes: [330, 220, 146], type: "sine" },
+      storm: { root: 55, notes: [185, 740, 1280], type: "square" },
+      gravity: { root: 41, notes: [89, 67, 45], type: "sine" },
+      precision: { root: 131, notes: [523, 784, 1175], type: "triangle" },
+    };
+    const signature = signatures[patronId] || signatures.precision;
+    this.pad(signature.root, 1.05, .012, signature.type, -7);
+    this.pad(signature.root * 1.5, .82, .0065, "sine", 7);
+    signature.notes.forEach((frequency, index) => setTimeout(() => {
+      this.tone(frequency, .24, signature.type, .023 - index * .003, patronId === "gravity" ? -18 : 70);
+    }, 90 + index * 92));
+  }
+
+  mutation() {
+    this.pad(46, 1.15, .014, "sawtooth", -12);
+    [[118, 0], [236, 54], [472, 108], [944, 174]].forEach(([frequency, delay], index) => setTimeout(() => {
+      this.tone(frequency, .13 + index * .025, index % 2 ? "square" : "sawtooth", .026 - index * .003, index < 2 ? -38 : 210);
+    }, delay));
+    setTimeout(() => this.tone(1568, .32, "triangle", .018, -520), 260);
+  }
+
   pickup() {
     const now = performance.now();
     if (now - this.lastPickup < 70) return;
@@ -296,8 +535,17 @@ class SynthAudio {
   level() { this.tone(330, 0.24, "triangle", 0.035, 550); }
   dash() { this.tone(240, 0.11, "sawtooth", 0.022, 460); }
   hurt() { this.tone(115, 0.18, "sawtooth", 0.04, -65); }
-  boss() { this.tone(70, 0.55, "sawtooth", 0.045, -25); }
-  victory() { [0, 120, 240].forEach((delay, index) => setTimeout(() => this.tone([330, 494, 659][index], 0.35, "triangle", 0.035, 90), delay)); }
+  boss(index = 0) {
+    this.scoreMode = "idle";
+    this.nextMusicAt = 0;
+    const root = [70, 58, 44][Math.max(0, Math.min(2, index))];
+    this.tone(root, .62, "sawtooth", .045, -18);
+    this.pad(root * 1.5, .9, .011, "triangle", -8);
+  }
+  victory() {
+    this.endScore();
+    [0, 120, 240].forEach((delay, index) => setTimeout(() => this.tone([330, 494, 659][index], 0.35, "triangle", 0.035, 90), delay));
+  }
 }
 
 const audio = new SynthAudio(profile.sound);
@@ -370,8 +618,8 @@ const state = {
   forgeOpened: [false, false, false, false],
   openingWaveTier: 0,
   openingWaveRemaining: 0,
-  encounterTriggered: Array(6).fill(false),
-  encounterTypes: Array(6).fill(null),
+  encounterTriggered: Array(ENCOUNTER_SLOT_COUNT).fill(false),
+  encounterTypes: Array(ENCOUNTER_SLOT_COUNT).fill(null),
   upgradePicks: 0,
   mutationRound: 0,
   mutationCount: 0,
@@ -410,6 +658,7 @@ let currentUpgradeChoices = [];
 let currentMutationChoices = [];
 let currentMutationWish = "";
 let synergyCache = null;
+let ceremonyRunning = false;
 
 const touch = { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0 };
 
@@ -593,13 +842,13 @@ const upgradeFamilyBlueprints = [
 ];
 
 const patronDefinitions = {
-  ballistic: { name: "白鸦", epithet: "把距离变成伤口", color: "#e7edf5" },
-  blaze: { name: "赤日", epithet: "喜欢看尸体继续燃烧", color: "#ff754f" },
-  cryo: { name: "眠月", epithet: "让一切慢到碎裂", color: "#8fdfff" },
-  toxin: { name: "孢母", epithet: "每个敌人都是下一个宿主", color: "#8ee66b" },
-  storm: { name: "雷兽", epithet: "一口咬住整片敌群", color: "#76dfff" },
-  gravity: { name: "盲星", epithet: "看不见，但能把万物拉近", color: "#b49aff" },
-  precision: { name: "观星人", epithet: "只承认完美的一击", color: "#ffd166" },
+  ballistic: { name: "白鸦", epithet: "把距离变成伤口", color: "#e7edf5", accent: "#58e6ff", effect: "feather", portrait: "assets/patrons/white-raven.webp" },
+  blaze: { name: "赤日", epithet: "喜欢看尸体继续燃烧", color: "#ff754f", accent: "#ffb13b", effect: "ember", portrait: "assets/patrons/red-sun.webp" },
+  cryo: { name: "眠月", epithet: "让一切慢到碎裂", color: "#8fdfff", accent: "#dffaff", effect: "crystal", portrait: "assets/patrons/sleeping-moon.webp" },
+  toxin: { name: "孢母", epithet: "每个敌人都是下一个宿主", color: "#8ee66b", accent: "#d6ff79", effect: "spore", portrait: "assets/patrons/spore-mother.webp" },
+  storm: { name: "雷兽", epithet: "一口咬住整片敌群", color: "#76dfff", accent: "#f1fbff", effect: "lightning", portrait: "assets/patrons/thunder-beast.webp" },
+  gravity: { name: "盲星", epithet: "看不见，但能把万物拉近", color: "#b49aff", accent: "#e8dcff", effect: "singularity", portrait: "assets/patrons/blind-star.webp" },
+  precision: { name: "观星人", epithet: "只承认完美的一击", color: "#ffd166", accent: "#fff0ae", effect: "constellation", portrait: "assets/patrons/stargazer.webp" },
 };
 
 const neutralPoolNames = {
@@ -638,6 +887,7 @@ function buildFamilyUpgrades() {
       description,
       tags: [family.id, family.label],
       patron: patron ? family.id : null,
+      partnerPatron: patron && index === 7 && partner ? family.partner : null,
       tier: index + 1,
       offerType: patron ? (index === 7 ? "duo" : index === 8 ? "legendary" : "boon") : "relic",
       weight: [100, 88, 58, 54, 50, 26, 22, 16, 7][index],
@@ -862,6 +1112,7 @@ function starterWeapon() {
     poison_damage: 0,
     slow_percent: 0,
     homing: 0.14,
+    orbit_launch: false,
     color: "#f1f0eb",
     tradeoff: "none",
     tradeoff_text: "属性均衡",
@@ -895,6 +1146,7 @@ function hydrateWeapon(raw, starter = false) {
   weapon.mutationRangeScale = Number(raw?.mutationRangeScale) || 1;
   weapon.trajectory = ["straight", "homing", "boomerang", "spiral", "wave", "skyfall"].includes(raw?.trajectory) ? raw.trajectory : "straight";
   weapon.targeting = ["nearest", "strongest", "cluster", "random"].includes(raw?.targeting) ? raw.targeting : "nearest";
+  weapon.orbit_launch = Boolean(raw?.orbit_launch) && weapon.delivery === "projectile" && weapon.trajectory === "homing";
   const hash = [...String(weapon.name)].reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
   weapon.visual_variant = Number.isInteger(raw?.visual_variant) ? Math.max(0, Math.min(23, raw.visual_variant)) : hash % 24;
   weapon.secondary_color = /^#[0-9a-f]{6}$/i.test(raw?.secondary_color || "") ? raw.secondary_color : ["#f1f0eb", "#18213a", "#ffd166", "#58e6ff"][(hash >>> 4) % 4];
@@ -987,6 +1239,7 @@ async function compileArchetypeAndStart() {
 
 function resetGame() {
   audio.wake();
+  audio.resetScore();
   selectedArchetype ||= defaultArchetype(ui.archetypeInput?.value || undefined);
   state.running = true;
   state.paused = false;
@@ -1016,8 +1269,8 @@ function resetGame() {
   state.forgeOpened = [false, false, false, false];
   state.openingWaveTier = 0;
   state.openingWaveRemaining = 0;
-  state.encounterTriggered = Array(6).fill(false);
-  state.encounterTypes = Array(6).fill(null);
+  state.encounterTriggered = Array(ENCOUNTER_SLOT_COUNT).fill(false);
+  state.encounterTypes = Array(ENCOUNTER_SLOT_COUNT).fill(null);
   state.upgradePicks = 0;
   state.mutationRound = 0;
   state.mutationCount = 0;
@@ -1061,10 +1314,14 @@ function resetGame() {
   currentUpgradeChoices = [];
   currentMutationChoices = [];
   currentMutationWish = "";
+  ceremonyRunning = false;
   entityId = 1;
   ui.gameOver.hidden = true;
   ui.forge.hidden = true;
   ui.upgrade.hidden = true;
+  ui.ceremony.hidden = true;
+  ui.upgrade.classList.remove("ceremony-obscured");
+  ui.forge.classList.remove("ceremony-obscured");
   ui.bossHud.hidden = true;
   ui.pauseCard.hidden = true;
   ui.intro.classList.add("dismissed");
@@ -1480,6 +1737,36 @@ function spawnEnemy(initial = false, openingWaveTier = 0, forcedType = null) {
   return enemy;
 }
 
+function promoteEnemyToElite(enemy, profile = {}) {
+  if (!enemy) return null;
+  const hpScale = Math.max(1, Number(profile.hpScale) || 3);
+  enemy.elite = true;
+  enemy.rank = "elite";
+  enemy.speciesName = profile.name || `精英·${enemy.speciesName}`;
+  enemy.maxHp *= hpScale;
+  enemy.hp = enemy.maxHp;
+  enemy.radius *= Math.max(1.25, Number(profile.radiusScale) || 1.5);
+  enemy.damage *= Math.max(1, Number(profile.damageScale) || 1.25);
+  enemy.speed *= Math.max(.65, Number(profile.speedScale) || .92);
+  enemy.xp = Math.max(enemy.xp + 3, Math.round(enemy.xp * (Number(profile.xpScale) || 4.2)));
+  enemy.color = profile.color || enemy.color;
+  enemy.accent = profile.accent || enemy.accent;
+  enemy.eliteCacheChance = Math.max(0, Math.min(1, Number(profile.cacheChance) || .18));
+  enemy.abilityTimer = Math.min(enemy.abilityTimer, .85 + Math.random() * .65);
+  effects.push({ type: "ring", x: enemy.x, y: enemy.y, radius: enemy.radius * 1.75, color: enemy.accent, life: .72, maxLife: .72, source: "enemy" });
+  return enemy;
+}
+
+function spawnStageEliteSquad(stageIndex, fullSquad = true) {
+  const squad = stageEliteSquads[stageIndex] || stageEliteSquads.at(-1);
+  const count = fullSquad ? squad.members.length : Math.min(squad.members.length, 1 + stageIndex);
+  const spawned = [];
+  for (const profile of squad.members.slice(0, count)) {
+    spawned.push(promoteEnemyToElite(spawnEnemy(false, 0, profile.type), profile));
+  }
+  return { squad, spawned };
+}
+
 function startOpeningWave(stageIndex) {
   if (stageIndex !== 0) return;
   const tier = stageIndex + 1;
@@ -1507,11 +1794,17 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
   state.encounterTriggered[triggerIndex] = true;
   state.wave += 1;
   const previousType = encounterIndex > 0 ? state.encounterTypes[triggerIndex - 1] : null;
+  const forcedSquad = timing.kind === "mid_elite" ? stageEliteSquads[stageIndex] || stageEliteSquads.at(-1) : null;
   const pool = randomEncounterDefinitions.filter((item) => item.id !== previousType);
-  const encounter = pool[Math.floor(Math.random() * pool.length)] || randomEncounterDefinitions[0];
+  const encounter = forcedSquad
+    ? { id: "mid_elite", kicker: forcedSquad.kicker, title: forcedSquad.title }
+    : pool[Math.floor(Math.random() * pool.length)] || randomEncounterDefinitions[0];
   state.encounterTypes[triggerIndex] = encounter.id;
   announce(encounter.kicker, encounter.title);
-  if (encounter.id === "migration") {
+  if (encounter.id === "mid_elite") {
+    const { squad, spawned } = spawnStageEliteSquad(stageIndex, true);
+    addLog(`${squad.title}进入战区：${spawned.map((enemy) => `「${enemy.speciesName}」`).join("、")}。`, true);
+  } else if (encounter.id === "migration") {
     const migrationPools = [
       ["pulse_wasp", "asteroid_mite", "azure_beetle"],
       ["nebula_hound", "comet_larva", "prism_fox", "phase_manta"],
@@ -1524,15 +1817,9 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
     }
     addLog(`${encounter.title}：${count} 个高速目标同时进入战区。`, true);
   } else if (encounter.id === "elite") {
-    const eliteProfiles = [
-      { type: "shield_jelly", count: 1, title: "蓝幕护盾结阵" },
-      { type: "spore_mother", count: 2, title: "紫孢育母入侵" },
-      { type: "thunder_orb", count: 3, title: "雷鸣核心狩猎" },
-    ];
-    const profile = eliteProfiles[stageIndex] || eliteProfiles.at(-1);
-    for (let index = 0; index < profile.count; index += 1) spawnEnemy(false, 0, profile.type);
-    ui.announcementTitle.textContent = profile.title;
-    addLog(`${profile.title}：击破 ${profile.count} 个高危目标可获取高密度经验。`, true);
+    const { squad, spawned } = spawnStageEliteSquad(stageIndex, false);
+    ui.announcementTitle.textContent = squad.title;
+    addLog(`${squad.title}先遣体：击破 ${spawned.length} 个大型精英可获取高密度经验。`, true);
   } else if (encounter.id === "meteor") {
     const count = 7 + stageIndex * 2;
     for (let index = 0; index < count; index += 1) {
@@ -1598,7 +1885,7 @@ function triggerStageEncounter(stageIndex, encounterIndex) {
     vacuumExperience("认知潮汐令散落经验全部回流");
   }
   state.shake = Math.max(state.shake, 8);
-  audio.boss();
+  audio.threat(stageIndex);
 }
 
 function damagePlayerFromHazard(amount, color, label) {
@@ -1660,9 +1947,9 @@ function compassDirection(angle) {
 
 function spawnBoss(index) {
   const definitions = [
-    { name: "环月监视者 · K-01", hp: 1950, speed: 32, radius: 39, damage: 18, color: "#58e6ff", xp: 45 },
-    { name: "星云织梦母体 · M-07", hp: 7350, speed: 38, radius: 46, damage: 24, color: "#a78bfa", xp: 70 },
-    { name: "憎恨奇点 · HATE", hp: 18000, speed: 44, radius: 54, damage: 29, color: "#ff5a72", xp: 110 },
+    { name: "环月监视者 · K-01", hp: 1950, speed: 32, radius: 56, damage: 18, color: "#58e6ff", xp: 45 },
+    { name: "星云织梦母体 · M-07", hp: 7350, speed: 38, radius: 68, damage: 24, color: "#a78bfa", xp: 70 },
+    { name: "憎恨奇点 · HATE", hp: 18000, speed: 44, radius: 82, damage: 29, color: "#ff5a72", xp: 110 },
   ];
   const template = definitions[index];
   const difficulty = difficultyModes[state.difficulty] || difficultyModes.normal;
@@ -1702,7 +1989,7 @@ function spawnBoss(index) {
   announce("THREAT DETECTED", `${template.name} · ${direction}侧接近`);
   addLog(`检测到高危意识体「${template.name}」，位于当前坐标${direction}侧。跟随屏幕箭头。`, true);
   state.shake = 16;
-  audio.boss();
+  audio.boss(index);
 }
 
 function bossAttack(boss) {
@@ -1747,8 +2034,12 @@ function nearestEnemy(range, fromX = player.x, fromY = player.y) {
   return nearest;
 }
 
-function weaponTarget(weapon, range, fromX = player.x, fromY = player.y) {
-  const candidates = enemies.filter((enemy) => !enemy.dead && Math.hypot(enemy.x - fromX, enemy.y - fromY) <= range);
+function weaponTarget(weapon, range, fromX = player.x, fromY = player.y, excludedIds = null) {
+  const candidates = enemies.filter((enemy) => (
+    !enemy.dead
+    && !excludedIds?.has(enemy.id)
+    && Math.hypot(enemy.x - fromX, enemy.y - fromY) <= range
+  ));
   if (!candidates.length) return null;
   if (weapon?.targeting === "strongest") return candidates.reduce((best, enemy) => enemy.hp > best.hp ? enemy : best);
   if (weapon?.targeting === "random") return candidates[Math.floor(Math.random() * candidates.length)];
@@ -1806,6 +2097,17 @@ function emitWeaponImpact(enemy, weapon, directionX = 1, directionY = 0) {
   });
 }
 
+function orbitLaunchPoint(weapon, index, count) {
+  const orbitAngle = Number.isFinite(weapon.orbitAngle) ? weapon.orbitAngle : state.time * 2.15;
+  const angle = orbitAngle + index / Math.max(1, count) * Math.PI * 2;
+  const radius = Math.max(48, Math.min(76, 38 + weapon.projectile_size * 2.25));
+  return {
+    x: player.x + Math.cos(angle) * radius,
+    y: player.y + Math.sin(angle) * radius * .72,
+    angle,
+  };
+}
+
 function fireProjectile(weapon, damageScale = 1) {
   const target = weaponTarget(weapon, runtimeRange(weapon));
   if (!target) return false;
@@ -1814,14 +2116,29 @@ function fireProjectile(weapon, damageScale = 1) {
   player.moveY = Math.sin(baseAngle);
   const count = weaponMutation(weapon, "wall") ? Math.max(5, runtimeCount(weapon)) : runtimeCount(weapon);
   const spread = Math.max(weapon.spread_degrees, weaponMutation(weapon, "wall") ? 72 : 0) * Math.PI / 180;
+  const orbitLaunch = Boolean(weapon.orbit_launch && weapon.trajectory === "homing");
+  const claimedTargets = new Set();
   emitWeaponCast(weapon, player.x + Math.cos(baseAngle) * 22, player.y + Math.sin(baseAngle) * 22, baseAngle, Math.min(1.5, .8 + count * .08));
   for (let index = 0; index < count; index += 1) {
+    const slotTarget = orbitLaunch
+      ? weaponTarget(weapon, runtimeRange(weapon), player.x, player.y, claimedTargets) || target
+      : target;
+    claimedTargets.add(slotTarget.id);
+    const launchPoint = orbitLaunch ? orbitLaunchPoint(weapon, index, count) : { x: player.x, y: player.y };
     const ratio = count === 1 ? 0 : index / (count - 1) - 0.5;
-    const angle = baseAngle + spread * ratio + (weapon.trajectory === "spiral" || weaponMutation(weapon, "spiral_dance") ? Math.sin(state.time * 4 + index) * .18 : 0);
+    const launchBaseAngle = orbitLaunch
+      ? Math.atan2(slotTarget.y - launchPoint.y, slotTarget.x - launchPoint.x)
+      : baseAngle;
+    const angle = launchBaseAngle + spread * ratio + (weapon.trajectory === "spiral" || weaponMutation(weapon, "spiral_dance") ? Math.sin(state.time * 4 + index) * .18 : 0);
     const skyfall = weapon.trajectory === "skyfall" || weaponMutation(weapon, "starfall");
-    const spawnX = skyfall ? target.x + (index - (count - 1) / 2) * 24 : player.x + Math.cos(angle) * 20;
-    const spawnY = skyfall ? target.y - Math.min(340, runtimeRange(weapon) * .58) - Math.abs(index - (count - 1) / 2) * 12 : player.y + Math.sin(angle) * 20;
+    const spawnX = skyfall
+      ? slotTarget.x + (index - (count - 1) / 2) * 24
+      : orbitLaunch ? launchPoint.x : launchPoint.x + Math.cos(angle) * 20;
+    const spawnY = skyfall
+      ? slotTarget.y - Math.min(340, runtimeRange(weapon) * .58) - Math.abs(index - (count - 1) / 2) * 12
+      : orbitLaunch ? launchPoint.y : launchPoint.y + Math.sin(angle) * 20;
     const flightAngle = skyfall ? Math.PI / 2 : angle;
+    const baseLife = runtimeRange(weapon) / (weapon.projectile_speed * bonuses.projectileSpeed);
     projectiles.push({
       x: spawnX,
       y: spawnY,
@@ -1831,17 +2148,22 @@ function fireProjectile(weapon, damageScale = 1) {
       wavePhase: index * 1.7,
       speed: weapon.projectile_speed * bonuses.projectileSpeed,
       radius: weapon.projectile_size * bonuses.area,
-      life: skyfall ? 1.35 : runtimeRange(weapon) / (weapon.projectile_speed * bonuses.projectileSpeed),
+      life: skyfall ? 1.35 : baseLife * (orbitLaunch ? 1.45 : 1),
       damage: runtimeDamage(weapon) * damageScale,
       pierceLeft: weapon.pierce + bonuses.pierce + (weaponMutation(weapon, "drill") ? 4 : 0),
       ricochetsLeft: weaponMutation(weapon, "ricochet") ? 2 : 0,
       weapon,
       color: weapon.color,
       hitIds: new Set(),
+      orbitLaunch,
+      orbitSlot: orbitLaunch ? index : -1,
       mutationChild: false,
       canProc: true,
       dead: false,
     });
+  }
+  if (orbitLaunch) {
+    effects.push({ type: "ring", x: player.x, y: player.y, radius: 64, color: weapon.color, life: .24, maxLife: .24, source: "weapon", form: "blade", style: "release" });
   }
   burst(player.x, player.y, weapon.color, 4, 45);
   weapon.recoil = 1;
@@ -2082,6 +2404,7 @@ function updatePendingAttacks() {
 function updateWeapons(dt) {
   for (const weapon of weapons) {
     weapon.recoil = Math.max(0, (weapon.recoil || 0) - dt * 6.5);
+    if (weapon.orbit_launch) weapon.orbitAngle = (weapon.orbitAngle || 0) + dt * 2.15;
     if (weapon.delivery === "orbit") {
       updateOrbitWeapon(weapon, dt);
       continue;
@@ -2170,7 +2493,13 @@ function updateProjectiles(dt) {
     } else if (projectile.weapon.trajectory === "spiral" || weaponMutation(projectile.weapon, "spiral_dance")) {
       projectile.angle += dt * 3.8 * (Math.sin(projectile.wavePhase || 1) >= 0 ? 1 : -1);
     } else if (projectile.weapon.homing > 0 || projectile.weapon.trajectory === "homing" || weaponMutation(projectile.weapon, "seeking")) {
-      const target = weaponTarget(projectile.weapon, Math.max(520, runtimeRange(projectile.weapon)), projectile.x, projectile.y);
+      const target = weaponTarget(
+        projectile.weapon,
+        Math.max(520, runtimeRange(projectile.weapon)),
+        projectile.x,
+        projectile.y,
+        projectile.hitIds,
+      );
       if (target) {
         const desired = Math.atan2(target.y - projectile.y, target.x - projectile.x);
         const tracking = Math.max(.55, projectile.weapon.homing || 0, projectile.weapon.trajectory === "homing" ? .92 : 0, weaponMutation(projectile.weapon, "seeking") ? 1 : 0);
@@ -2689,7 +3018,8 @@ function killEnemy(enemy, weapon = null, proc = {}) {
   const missingHealth = 1 - player.hp / Math.max(1, player.maxHp);
   if (!enemy.boss && Math.random() < .025 + missingHealth * .055) pickups.push({ type: "heal", x: enemy.x + 8, y: enemy.y, value: 12, phase: Math.random() * Math.PI * 2 });
   if (!enemy.elite && !enemy.boss && Math.random() < .0035) pickups.push({ type: "cache", reward: "upgrade", x: enemy.x, y: enemy.y + 8, phase: Math.random() * Math.PI * 2 });
-  if (enemy.elite && Math.random() < .5) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, elite: true });
+  const eliteCacheChance = Number.isFinite(enemy.eliteCacheChance) ? enemy.eliteCacheChance : .5;
+  if (enemy.elite && Math.random() < eliteCacheChance) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, elite: true });
   if (enemy.eventTarget) {
     pickups.push({ type: "cache", reward: enemy.eventReward || "upgrade", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, mythic: enemy.eventReward === "artifact" });
     vacuumExperience("移动星核信使瓦解，认知与战利品正在回流");
@@ -3155,6 +3485,7 @@ function update(dt) {
     state.stageIndex += 1;
     announce("PROTOCOL SHIFT", stages[state.stageIndex].label);
     addLog(`${stages[state.stageIndex].label}启动，敌群发生变异。`, true);
+    audio.stageShift(state.stageIndex);
   }
   const stageCombatReady = state.stageIndex === 0 ? state.forgeOpened[0] : true;
   if (state.openingWaveTier === 0 && stageCombatReady) {
@@ -3181,6 +3512,8 @@ function update(dt) {
     addLog("憎恨奇点现身 15 秒：第四次武器重构强制接入。", true);
     queueReward("forge", 4);
   }
+
+  audio.updateScore(state, currentBoss, enemies.length);
 
   updateWeapons(dt);
   updateProjectiles(dt);
@@ -3446,6 +3779,17 @@ function drawSingularityCore(renderCtx, x, y, radius, color, phase = 0, intensit
 }
 
 function drawCosmicBoss(enemy, r, phase, color) {
+  const presencePulse = 1 + Math.sin(state.time * 2.2 + enemy.bossIndex) * .045;
+  ctx.save();
+  ctx.globalAlpha = .16;
+  ctx.fillStyle = enemy.color;
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.56 * presencePulse, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = .42;
+  ctx.strokeStyle = enemy.color;
+  ctx.lineWidth = Math.max(2, r * .035);
+  ctx.setLineDash([r * .18, r * .12]);
+  ctx.beginPath(); ctx.arc(0, 0, r * 1.72 * presencePulse, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
   if (enemy.bossIndex === 0) {
     ctx.save(); ctx.rotate(state.time * .45);
     ctx.strokeStyle = enemy.color; ctx.lineWidth = r * .12;
@@ -3876,6 +4220,9 @@ function drawProjectiles() {
     ctx.translate(point.x, point.y);
     ctx.rotate(projectile.angle);
     drawProjectileBody(projectile);
+    if (projectile.orbitLaunch && inferVisualForm(projectile.weapon) === "blade") {
+      drawWeaponModel(ctx, projectile.weapon, 0, 0, 0, Math.max(.25, projectile.radius / 30), .92);
+    }
     ctx.restore();
   }
   ctx.restore();
@@ -4086,7 +4433,7 @@ function polygonWithContext(renderCtx, x, y, radius, sides, rotation = 0) {
 }
 
 function drawEquippedWeapons() {
-  const held = weapons.filter((weapon) => weapon.delivery !== "orbit");
+  const held = weapons.filter((weapon) => weapon.delivery !== "orbit" && !weapon.orbit_launch);
   const facing = Math.atan2(player.moveY, player.moveX);
   const anchor = playerScreenPosition();
   held.slice(1).forEach((weapon, index) => {
@@ -4130,11 +4477,25 @@ function drawOrbitals() {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const weapon of weapons) {
-    if (weapon.delivery !== "orbit" || !weapon.orbitPositions) continue;
-    for (const orb of weapon.orbitPositions) {
-      const point = worldToScreen(orb.x, orb.y);
-      drawOrbitAttachment(point, weapon, orb.angle + Math.PI / 2);
-      drawWeaponModel(ctx, weapon, point.x, point.y, orb.angle + Math.PI / 2, Math.max(.28, weapon.projectile_size / 26) * bonuses.area, 1);
+    if (weapon.delivery === "orbit" && weapon.orbitPositions) {
+      for (const orb of weapon.orbitPositions) {
+        const point = worldToScreen(orb.x, orb.y);
+        drawOrbitAttachment(point, weapon, orb.angle + Math.PI / 2);
+        drawWeaponModel(ctx, weapon, point.x, point.y, orb.angle + Math.PI / 2, Math.max(.28, weapon.projectile_size / 26) * bonuses.area, 1);
+      }
+      continue;
+    }
+    if (weapon.orbit_launch && weapon.delivery === "projectile") {
+      const count = runtimeCount(weapon);
+      const activeSlots = new Set(projectiles.filter((projectile) => (
+        !projectile.dead && projectile.weapon === weapon && projectile.orbitLaunch
+      )).map((projectile) => projectile.orbitSlot));
+      for (let index = 0; index < count; index += 1) {
+        if (activeSlots.has(index)) continue;
+        const orb = orbitLaunchPoint(weapon, index, count);
+        const point = worldToScreen(orb.x, orb.y);
+        drawWeaponModel(ctx, weapon, point.x, point.y, orb.angle + Math.PI / 2, Math.max(.3, weapon.projectile_size / 24) * bonuses.area, .92);
+      }
     }
   }
   ctx.restore();
@@ -4995,6 +5356,7 @@ function finishRun(victory) {
   state.running = false;
   state.paused = true;
   state.victory = victory;
+  audio.endScore();
   if (!victory) player.hp = 0;
   state.rewardQueue = [];
   state.rewardOpen = false;
@@ -5073,7 +5435,7 @@ function openForge(tier = state.stageIndex + 1) {
   ui.budget.textContent = String(forge.budget);
   ui.wishForm.hidden = false;
   ui.quickWishes.hidden = true;
-  ui.skip.hidden = true;
+  ui.recommend.disabled = false;
   ui.forgeLoading.hidden = true;
   ui.weaponResult.hidden = true;
   ui.forgeError.hidden = true;
@@ -5108,6 +5470,177 @@ function patronIdForUpgrade(upgrade) {
 
 function tagsForUpgrade(upgrade) {
   return upgrade.tags || coreUpgradeTags[upgrade.id] || [];
+}
+
+const ceremonyProfiles = {
+  ballistic: { color: "#e7edf5", accent: "#58e6ff", effect: "feather", sigil: "➤" },
+  blaze: { color: "#ff754f", accent: "#ffb13b", effect: "ember", sigil: "♨" },
+  cryo: { color: "#8fdfff", accent: "#dffaff", effect: "crystal", sigil: "❄" },
+  toxin: { color: "#8ee66b", accent: "#d6ff79", effect: "spore", sigil: "☣" },
+  storm: { color: "#76dfff", accent: "#f1fbff", effect: "lightning", sigil: "ϟ" },
+  gravity: { color: "#b49aff", accent: "#e8dcff", effect: "singularity", sigil: "◉" },
+  precision: { color: "#ffd166", accent: "#fff0ae", effect: "constellation", sigil: "✦" },
+  survival: { color: "#ff6c89", accent: "#ffd2dc", effect: "pulse", sigil: "♥" },
+  mobility: { color: "#65f0db", accent: "#d9fff8", effect: "streak", sigil: "»" },
+  economy: { color: "#c9ff5a", accent: "#f1ffc0", effect: "shard", sigil: "◇" },
+  ai: { color: "#b8c2ce", accent: "#58e6ff", effect: "metal", sigil: "AI" },
+};
+
+function ceremonyProfileIdForUpgrade(upgrade) {
+  const patronId = patronIdForUpgrade(upgrade);
+  if (patronId) return patronId;
+  const tags = tagsForUpgrade(upgrade);
+  return tags.find((tag) => ceremonyProfiles[tag]) || "survival";
+}
+
+function waitForCeremony(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function ceremonyRandom(seedText) {
+  let seed = [...String(seedText)].reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
+function renderCeremonyParticles(profile, seedText, count = 30) {
+  ui.ceremonyParticles.replaceChildren();
+  const random = ceremonyRandom(`${seedText}-${profile.effect}`);
+  for (let index = 0; index < count; index += 1) {
+    const particle = document.createElement("i");
+    const angle = random() * Math.PI * 2;
+    const distance = 22 + random() * 56;
+    particle.style.setProperty("--particle-x", `${Math.cos(angle) * distance}vw`);
+    particle.style.setProperty("--particle-y", `${Math.sin(angle) * distance}vh`);
+    particle.style.setProperty("--particle-delay", `${(random() * .22).toFixed(3)}s`);
+    particle.style.setProperty("--particle-size", `${(3 + random() * 9).toFixed(1)}px`);
+    particle.style.setProperty("--particle-spin", `${Math.round((random() - .5) * 600)}deg`);
+    particle.style.setProperty("--particle-origin-x", `${Math.round(42 + random() * 16)}%`);
+    particle.style.setProperty("--particle-origin-y", `${Math.round(42 + random() * 16)}%`);
+    ui.ceremonyParticles.append(particle);
+  }
+}
+
+function setCeremonyPortrait(element, patron) {
+  if (!patron) {
+    element.hidden = true;
+    element.removeAttribute("src");
+    element.alt = "";
+    return;
+  }
+  element.src = patron.portrait;
+  element.alt = `${patron.name}立绘`;
+  element.hidden = false;
+}
+
+function renderAICeremonyBlueprint(weapon, mode = "mutation") {
+  const blueprint = ui.ceremonyAiBlueprint;
+  const canvas = ui.ceremonyAiWeaponCanvas;
+  if (!blueprint || !canvas || !weapon) {
+    if (blueprint) blueprint.hidden = true;
+    return;
+  }
+  blueprint.hidden = false;
+  const blueprintCtx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const color = weapon.color || "#58e6ff";
+  const form = inferVisualForm(weapon);
+  const variant = Math.max(0, Math.min(23, Number(weapon.visual_variant) || 0));
+  blueprintCtx.clearRect(0, 0, width, height);
+  blueprintCtx.save();
+  blueprintCtx.strokeStyle = `${color}38`;
+  blueprintCtx.lineWidth = 1;
+  blueprintCtx.setLineDash([4, 8]);
+  blueprintCtx.beginPath();
+  blueprintCtx.moveTo(34, height / 2); blueprintCtx.lineTo(width - 34, height / 2);
+  blueprintCtx.moveTo(width / 2, 20); blueprintCtx.lineTo(width / 2, height - 20);
+  blueprintCtx.stroke();
+  blueprintCtx.setLineDash([]);
+  blueprintCtx.strokeStyle = `${color}66`;
+  [58, 94].forEach((radius) => {
+    blueprintCtx.beginPath();
+    blueprintCtx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+    blueprintCtx.stroke();
+  });
+  blueprintCtx.globalCompositeOperation = "lighter";
+  const modelScale = ["orb", "tome", "drone"].includes(form) ? 5.1 : 4.15;
+  drawWeaponModel(blueprintCtx, weapon, width / 2, height / 2, 0, modelScale, .96);
+  blueprintCtx.restore();
+  ui.ceremonyAiForm.textContent = `FORM // ${form.toUpperCase()} · ${String(weapon.delivery || "PROJECTILE").toUpperCase()}`;
+  ui.ceremonyAiCode.textContent = `${mode === "forge" ? "COMPILE" : "EVOLVE"} // GENE ${String(variant).padStart(2, "0")}`;
+}
+
+async function showCeremony({ type, profile, seed, kicker, title, subtitle, sigil, patron = null, partner = null, weapon = null, aiMode = "mutation", duration = 1050 }) {
+  if (!ui.ceremony) return;
+  ui.ceremony.className = `upgrade-ceremony ceremony-${type} effect-${profile.effect}`;
+  if (partner) ui.ceremony.classList.add("ceremony-duo");
+  ui.ceremony.style.setProperty("--ceremony-color", profile.color);
+  ui.ceremony.style.setProperty("--ceremony-accent", profile.accent);
+  ui.ceremonyKicker.textContent = kicker;
+  ui.ceremonyTitle.textContent = title;
+  ui.ceremonySubtitle.textContent = subtitle;
+  ui.ceremonySigil.textContent = sigil || profile.sigil;
+  ui.ceremonyPatronName.textContent = partner ? `${patron.name} × ${partner.name}` : patron?.name || "";
+  setCeremonyPortrait(ui.ceremonyPortrait, patron);
+  setCeremonyPortrait(ui.ceremonyPortraitSecondary, partner);
+  if (type === "ai") renderAICeremonyBlueprint(weapon, aiMode);
+  else if (ui.ceremonyAiBlueprint) ui.ceremonyAiBlueprint.hidden = true;
+  renderCeremonyParticles(profile, seed, type === "patron" ? (partner ? 78 : 58) : type === "ai" ? 46 : 18);
+  ui.upgrade.classList.add("ceremony-obscured");
+  ui.forge.classList.add("ceremony-obscured");
+  ui.ceremony.hidden = false;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  ui.ceremony.classList.add("active");
+  await waitForCeremony(duration);
+  ui.ceremony.classList.add("leaving");
+  await waitForCeremony(170);
+  ui.ceremony.hidden = true;
+  ui.ceremony.classList.remove("active", "leaving");
+  ui.upgrade.classList.remove("ceremony-obscured");
+  ui.forge.classList.remove("ceremony-obscured");
+}
+
+async function playUpgradeCeremony(upgrade) {
+  const profileId = ceremonyProfileIdForUpgrade(upgrade);
+  const profile = ceremonyProfiles[profileId];
+  const patronId = patronIdForUpgrade(upgrade);
+  const patron = patronDefinitions[patronId] || null;
+  const partner = patronDefinitions[upgrade.partnerPatron] || null;
+  if (patron) {
+    audio.boon(patronId);
+    if (partner) setTimeout(() => audio.boon(upgrade.partnerPatron), 155);
+    await showCeremony({
+      type: "patron", profile, seed: upgrade.id,
+      kicker: partner ? `DUO BOON / ${patron.name} × ${partner.name}` : `PATRON BOON / ${patron.name}`,
+      title: upgrade.title,
+      subtitle: `“${patron.epithet}。” · ${rarityMeta[upgrade.rarity].label}`,
+      sigil: upgrade.icon, patron, partner, duration: partner ? 1580 : 1320,
+    });
+    return;
+  }
+  audio.relic(profileId);
+  await showCeremony({
+    type: "relic", profile, seed: upgrade.id,
+    kicker: upgrade.isPom ? "ESSENCE DEEPENED / 神髓强化" : "RELIC SYNCHRONIZED / 普通强化",
+    title: upgrade.title,
+    subtitle: `${upgrade.family || "漂流遗物"} · ${rarityMeta[upgrade.rarity].label}`,
+    sigil: upgrade.icon, duration: 650,
+  });
+}
+
+async function playAICeremony({ title, subtitle, color = "#b8c2ce", mode = "mutation", weapon = null, duration = 1380 }) {
+  const profile = { ...ceremonyProfiles.ai, color, accent: mode === "forge" ? "#c9ff5a" : "#58e6ff" };
+  audio.mutation();
+  await showCeremony({
+    type: "ai", profile, seed: `${mode}-${title}`,
+    kicker: mode === "forge" ? "AI WEAPON COMPILED / 妄想铸成" : "AI WEAPON EVOLVED / 异梦重构",
+    title,
+    subtitle,
+    sigil: "AI", weapon, aiMode: mode, duration,
+  });
 }
 
 function ownedBuildTags() {
@@ -5406,35 +5939,42 @@ function applyAdaptiveEvolution() {
   addLog(`「吃不完的苹果」又长出一口味道：${family.label}。`, true);
 }
 
-function selectMutation(index) {
+async function selectMutation(index) {
   const choice = currentMutationChoices[index];
   const weapon = weapons[choice?.target_index];
-  if (!choice || !weapon) return;
-  weapon.mutations ||= [];
-  weapon.mutations.push({
-    title: choice.title, description: choice.description, color: choice.accent_color,
-    effects: Array.isArray(choice.effects) ? choice.effects.map((rule) => ({ ...rule })) : [],
-    round: choice.mutation_round || state.mutationRound,
-  });
-  if (choice.tradeoff === "damage_down") weapon.mutationDamageScale *= .88;
-  else if (choice.tradeoff === "cooldown_up") weapon.mutationCooldownScale *= 1.10;
-  else if (choice.tradeoff === "range_down") weapon.mutationRangeScale *= .90;
-  weapon.name = choice.evolution_name;
-  weapon.description = choice.description;
-  weapon.color = choice.accent_color;
-  weapon.tags = [...new Set([...(weapon.tags || []), ...(choice.tags || [])])].slice(-4);
-  state.mutationCount += 1;
-  applyAdaptiveEvolution();
-  checkTransformations();
-  invalidateSynergies();
-  addLog(`「${choice.target_name}」从异梦中醒来，变成了「${weapon.name}」：${choice.title}。`, true);
-  announce("WEAPON DREAM", `${weapon.name} · ${choice.title}`);
-  burst(player.x, player.y, choice.accent_color, 34, 210);
-  state.shake = Math.max(state.shake, 9);
-  updateLoadoutUI();
-  updateSynergyUI();
-  currentMutationWish = "";
-  closeReward();
+  if (!choice || !weapon || ceremonyRunning) return;
+  ceremonyRunning = true;
+  ui.upgradeOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  try {
+    weapon.mutations ||= [];
+    weapon.mutations.push({
+      title: choice.title, description: choice.description, color: choice.accent_color,
+      effects: Array.isArray(choice.effects) ? choice.effects.map((rule) => ({ ...rule })) : [],
+      round: choice.mutation_round || state.mutationRound,
+    });
+    if (choice.tradeoff === "damage_down") weapon.mutationDamageScale *= .88;
+    else if (choice.tradeoff === "cooldown_up") weapon.mutationCooldownScale *= 1.10;
+    else if (choice.tradeoff === "range_down") weapon.mutationRangeScale *= .90;
+    weapon.name = choice.evolution_name;
+    weapon.description = choice.description;
+    weapon.color = choice.accent_color;
+    weapon.tags = [...new Set([...(weapon.tags || []), ...(choice.tags || [])])].slice(-4);
+    state.mutationCount += 1;
+    applyAdaptiveEvolution();
+    checkTransformations();
+    invalidateSynergies();
+    addLog(`「${choice.target_name}」从异梦中醒来，变成了「${weapon.name}」：${choice.title}。`, true);
+    announce("WEAPON DREAM", `${weapon.name} · ${choice.title}`);
+    burst(player.x, player.y, choice.accent_color, 34, 210);
+    state.shake = Math.max(state.shake, 9);
+    updateLoadoutUI();
+    updateSynergyUI();
+    currentMutationWish = "";
+    await playAICeremony({ title: weapon.name, subtitle: `${choice.title} · ${choice.tradeoff_text}`, color: choice.accent_color, weapon });
+  } finally {
+    ceremonyRunning = false;
+    closeReward();
+  }
 }
 
 function renderUpgradeChoices() {
@@ -5450,7 +5990,27 @@ function renderUpgradeChoices() {
     card.className = "upgrade-card";
     card.dataset.upgradeId = upgrade.id;
     card.style.setProperty("--rarity-color", rarity.color);
-    if (patron) card.style.setProperty("--source-color", patron.color);
+    if (patron) {
+      card.classList.add("patron-upgrade-card", `effect-${patron.effect}`);
+      card.style.setProperty("--source-color", patron.color);
+      const portrait = document.createElement("img");
+      portrait.className = "patron-card-portrait";
+      portrait.src = patron.portrait;
+      portrait.alt = "";
+      portrait.loading = "eager";
+      portrait.decoding = "async";
+      card.append(portrait);
+      const partner = patronDefinitions[upgrade.partnerPatron];
+      if (partner) {
+        const partnerPortrait = document.createElement("img");
+        partnerPortrait.className = "patron-card-portrait patron-card-portrait-secondary";
+        partnerPortrait.src = partner.portrait;
+        partnerPortrait.alt = "";
+        partnerPortrait.loading = "eager";
+        partnerPortrait.decoding = "async";
+        card.append(partnerPortrait);
+      }
+    }
     const number = document.createElement("span");
     number.className = "upgrade-number";
     number.textContent = `0${index + 1}`;
@@ -5486,31 +6046,40 @@ function renderUpgradeChoices() {
   ui.reroll.disabled = state.rerolls <= 0;
 }
 
-function selectUpgrade(id) {
+async function selectUpgrade(id) {
   const upgrade = currentUpgradeChoices.find((item) => item.id === id);
-  if (!upgrade) return;
-  const levelId = upgrade.baseId || upgrade.id;
-  upgrade.apply();
-  upgradeLevels[levelId] = (upgradeLevels[levelId] || 0) + 1;
-  const patronId = patronIdForUpgrade(upgrade);
-  if (patronId) state.activePatrons.add(patronId);
-  checkTransformations();
-  invalidateSynergies();
-  addLog(upgrade.isPom
-    ? `神髓渗进「${upgrade.title.replace("神髓：", "")}」，升至 ${upgradeLevels[levelId]} 级。`
-    : `获得「${upgrade.title}」。`, true);
-  burst(player.x, player.y, rarityMeta[upgrade.rarity].color, 20, 140);
-  updateLoadoutUI();
-  updateSynergyUI();
-  if (state.rewardType === "upgrade") {
-    state.upgradePicks += 1;
-    if (state.upgradePicks % 3 === 0) {
-      state.mutationRound += 1;
-      state.rewardQueue.unshift({ type: "mutation", tier: state.mutationRound });
-      addLog(`三件东西开始在武器里说梦话。第 ${state.mutationRound} 次武器异梦即将开始。`, true);
+  if (!upgrade || ceremonyRunning) return;
+  ceremonyRunning = true;
+  ui.upgradeOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  try {
+    const levelId = upgrade.baseId || upgrade.id;
+    upgrade.apply();
+    upgradeLevels[levelId] = (upgradeLevels[levelId] || 0) + 1;
+    const patronId = patronIdForUpgrade(upgrade);
+    if (patronId) state.activePatrons.add(patronId);
+    checkTransformations();
+    invalidateSynergies();
+    addLog(upgrade.isPom
+      ? `神髓渗进「${upgrade.title.replace("神髓：", "")}」，升至 ${upgradeLevels[levelId]} 级。`
+      : `获得「${upgrade.title}」。`, true);
+    const profile = ceremonyProfiles[ceremonyProfileIdForUpgrade(upgrade)];
+    burst(player.x, player.y, profile.color, patronId ? 34 : 24, patronId ? 210 : 165);
+    state.shake = Math.max(state.shake, patronId ? 7 : 3);
+    updateLoadoutUI();
+    updateSynergyUI();
+    if (state.rewardType === "upgrade") {
+      state.upgradePicks += 1;
+      if (state.upgradePicks % 3 === 0) {
+        state.mutationRound += 1;
+        state.rewardQueue.unshift({ type: "mutation", tier: state.mutationRound });
+        addLog(`三件东西开始在武器里说梦话。第 ${state.mutationRound} 次武器异梦即将开始。`, true);
+      }
     }
+    await playUpgradeCeremony(upgrade);
+  } finally {
+    ceremonyRunning = false;
+    closeReward();
   }
-  closeReward();
 }
 
 function rerollUpgrades() {
@@ -5537,11 +6106,14 @@ function showForgeForm() {
   ui.weaponResult.hidden = true;
   ui.forgeError.hidden = true;
   ui.forgeButton.disabled = false;
+  ui.recommend.disabled = false;
   ui.wishInput.focus();
 }
 
-function setLoading() {
-  const messages = ["解析语义结构…", "匹配战斗组件…", "计算强度预算…", "稳定异常参数…"];
+function setLoading(recommendationMode = false) {
+  const messages = recommendationMode
+    ? ["读取当前战况…", "寻找构筑短板…", "推演互补武器…", "稳定推荐参数…"]
+    : ["解析语义结构…", "匹配战斗组件…", "计算强度预算…", "稳定异常参数…"];
   let index = 0;
   ui.loadingStatus.textContent = messages[0];
   clearInterval(loadingTimer);
@@ -5551,26 +6123,43 @@ function setLoading() {
   }, 1150);
 }
 
-async function generateWeapon(wish) {
+function forgeCombatSnapshot() {
+  const stageElapsed = Math.max(0, state.time - state.stageIndex * STAGE_DURATION);
+  return {
+    stage: state.stageIndex + 1,
+    stage_progress: Math.min(1, stageElapsed / STAGE_DURATION),
+    hp_ratio: player.hp / Math.max(1, player.maxHp),
+    enemy_count: enemies.filter((enemy) => !enemy.dead).length,
+    elite_count: enemies.filter((enemy) => !enemy.dead && enemy.elite).length,
+    boss_active: Boolean(currentBoss && !currentBoss.dead),
+    boss_hp_ratio: currentBoss ? currentBoss.hp / Math.max(1, currentBoss.maxHp) : 1,
+    difficulty: state.difficulty,
+    build_tags: ownedBuildTags().slice(0, 12),
+  };
+}
+
+async function generateWeapon(wish, { recommend = false } = {}) {
   stopWeaponPreview();
   ui.wishForm.hidden = true;
   ui.quickWishes.hidden = true;
   ui.forgeLoading.hidden = false;
   ui.weaponResult.hidden = true;
   ui.forgeError.hidden = true;
-  setLoading();
+  setLoading(recommend);
   try {
     const response = await fetch("/api/generate-weapon", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         wish,
+        recommend,
+        combatState: forgeCombatSnapshot(),
         level: state.level,
         forgeTier: state.activeForgeTier,
         archetype: { role: selectedArchetype?.role, trait: selectedArchetype?.trait },
         sessionId,
-        loadout: weapons.map(({ name, tags, delivery, visual_form, trajectory, targeting, burn_damage, poison_damage, slow_percent, explosion_radius, pierce }) => ({
-          name, tags, delivery, visual_form, trajectory, targeting, burn_damage, poison_damage, slow_percent, explosion_radius, pierce,
+        loadout: weapons.map(({ name, tags, delivery, visual_form, trajectory, targeting, burn_damage, poison_damage, slow_percent, explosion_radius, pierce, homing, orbit_launch }) => ({
+          name, tags, delivery, visual_form, trajectory, targeting, burn_damage, poison_damage, slow_percent, explosion_radius, pierce, homing, orbit_launch,
         })),
       }),
     });
@@ -5578,6 +6167,7 @@ async function generateWeapon(wish) {
     if (!response.ok) throw new Error(data.error || `服务器返回 ${response.status}`);
     previewWeapon = data.weapon;
     showWeaponResult(data.weapon, data.adjustments || []);
+    if (recommend && data.recommendationWish) addLog(`AI 根据当前战况提出：${data.recommendationWish}。`, true);
     if (data.source === "local-demo") addLog("远方没有回应，本次愿望由本地规则实现。", true);
   } catch (error) {
     ui.forgeLoading.hidden = true;
@@ -5619,6 +6209,7 @@ function showWeaponResult(weapon, adjustments) {
   addResultStat("基础 DPS", baseDps.toFixed(1));
   addResultStat(weapon.delivery === "orbit" ? "环绕数量" : "投射数量", weapon.projectile_count);
   addResultStat("作用距离", Math.round(weapon.range));
+  if (weapon.orbit_launch) addResultStat("待机阵型", "环阵释放");
   const trajectoryLabels = { straight: "直线", homing: "主动追踪", boomerang: "折返", spiral: "螺旋", wave: "蛇形", skyfall: "天降" };
   addResultStat("真实轨迹", trajectoryLabels[weapon.trajectory] || "直线");
   addResultStat("强度评级", `${Math.round(weapon.balance_score || 0)} / ${Math.round(weapon.budget || forgeTiers[state.activeForgeTier - 1].budget)}`);
@@ -5736,10 +6327,20 @@ function drawWeaponPreviewFrame(weapon, elapsed) {
     const count = Math.max(1, Math.min(8, Number(weapon.projectile_count) || 1));
     for (let index = 0; index < count; index += 1) {
       const offset = index - (count - 1) / 2;
-      const point = previewProjectilePosition(weapon.trajectory, attackProgress, source, target, offset, elapsed);
-      const previous = previewProjectilePosition(weapon.trajectory, Math.max(0, attackProgress - .08), source, target, offset, elapsed);
+      const orbitAngle = elapsed * 2.35 + index / count * Math.PI * 2;
+      const launchSource = weapon.orbit_launch
+        ? { x: source.x + Math.cos(orbitAngle) * 54, y: source.y + Math.sin(orbitAngle) * 38 }
+        : source;
+      const flightProgress = weapon.orbit_launch ? Math.max(0, (attackProgress - .24) / .76) : attackProgress;
+      const point = previewProjectilePosition(weapon.trajectory, flightProgress, launchSource, target, offset, elapsed);
+      const previous = previewProjectilePosition(weapon.trajectory, Math.max(0, flightProgress - .08), launchSource, target, offset, elapsed);
       previewCtx.strokeStyle = `${weapon.color}88`; previewCtx.lineWidth = 2; previewCtx.beginPath(); previewCtx.moveTo(previous.x, previous.y); previewCtx.lineTo(point.x, point.y); previewCtx.stroke();
-      previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(point.x, point.y, Math.max(3, Number(weapon.projectile_size || 5) * .48), 0, Math.PI * 2); previewCtx.fill();
+      if (weapon.orbit_launch && inferVisualForm(weapon) === "blade") {
+        const heading = flightProgress > 0 ? Math.atan2(point.y - previous.y, point.x - previous.x) : orbitAngle + Math.PI / 2;
+        drawWeaponModel(previewCtx, weapon, point.x, point.y, heading, .3, 1);
+      } else {
+        previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(point.x, point.y, Math.max(3, Number(weapon.projectile_size || 5) * .48), 0, Math.PI * 2); previewCtx.fill();
+      }
     }
   }
 
@@ -5784,8 +6385,8 @@ function rejectWeaponAndReforge() {
   ui.wishInput.select();
 }
 
-function acceptWeapon() {
-  if (!previewWeapon) return;
+async function acceptWeapon() {
+  if (!previewWeapon || ceremonyRunning) return;
   stopWeaponPreview();
   previewWeapon = hydrateWeapon(previewWeapon);
   previewWeapon.timer = 0.15;
@@ -5797,20 +6398,37 @@ function acceptWeapon() {
     closeForge();
     return;
   }
-  weapons.push(previewWeapon);
-  invalidateSynergies();
-  profile.blueprints ||= [];
-  if (!profile.blueprints.some((item) => item.name === previewWeapon.name)) {
-    profile.blueprints.push({ name: previewWeapon.name, delivery: previewWeapon.delivery, color: previewWeapon.color, tags: previewWeapon.tags });
-    profile.blueprints = profile.blueprints.slice(-40);
-    saveProfile();
-    updateProfileUI();
+  ceremonyRunning = true;
+  ui.accept.disabled = true;
+  ui.reforge.disabled = true;
+  try {
+    weapons.push(previewWeapon);
+    invalidateSynergies();
+    profile.blueprints ||= [];
+    if (!profile.blueprints.some((item) => item.name === previewWeapon.name)) {
+      profile.blueprints.push({ name: previewWeapon.name, delivery: previewWeapon.delivery, color: previewWeapon.color, tags: previewWeapon.tags });
+      profile.blueprints = profile.blueprints.slice(-40);
+      saveProfile();
+      updateProfileUI();
+    }
+    addLog(`武器「${previewWeapon.name}」已经醒来。`, true);
+    burst(player.x, player.y, previewWeapon.color, 36, 220);
+    state.shake = Math.max(state.shake, 8);
+    updateLoadoutUI();
+    updateSynergyUI();
+    await playAICeremony({
+      title: previewWeapon.name,
+      subtitle: previewWeapon.behavior_summary || previewWeapon.description,
+      color: previewWeapon.color,
+      mode: "forge",
+      weapon: previewWeapon,
+    });
+  } finally {
+    ceremonyRunning = false;
+    ui.accept.disabled = false;
+    ui.reforge.disabled = false;
+    closeForge();
   }
-  addLog(`武器「${previewWeapon.name}」已经醒来。`, true);
-  burst(player.x, player.y, previewWeapon.color, 24, 150);
-  updateLoadoutUI();
-  updateSynergyUI();
-  closeForge();
 }
 
 async function checkApi() {
@@ -5901,10 +6519,10 @@ ui.metaUpgrades.addEventListener("click", (event) => {
   if (button) buyMetaUpgrade(button.dataset.metaId);
 });
 ui.sound.addEventListener("click", () => {
-  audio.enabled = !audio.enabled;
+  audio.setEnabled(!audio.enabled);
   profile.sound = audio.enabled;
   saveProfile();
-  if (audio.enabled) { audio.wake(); audio.tone(440, .12, "sine", .025, 180); }
+  if (audio.enabled) audio.tone(440, .12, "sine", .025, 180);
   updateProfileUI();
 });
 ui.difficultyPicker.addEventListener("click", (event) => {
@@ -5963,7 +6581,13 @@ ui.wishForm.addEventListener("submit", (event) => {
   const wish = ui.wishInput.value.trim();
   if (!wish) return;
   ui.forgeButton.disabled = true;
+  ui.recommend.disabled = true;
   generateWeapon(wish);
+});
+ui.recommend.addEventListener("click", () => {
+  ui.forgeButton.disabled = true;
+  ui.recommend.disabled = true;
+  generateWeapon("", { recommend: true });
 });
 ui.retry.addEventListener("click", showForgeForm);
 ui.reforge.addEventListener("click", rejectWeaponAndReforge);

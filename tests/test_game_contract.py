@@ -81,6 +81,23 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn("function rejectWeaponAndReforge()", GAME)
         self.assertIn(".weapon-preview-video", STYLES)
 
+    def test_forge_can_request_an_ai_recommendation_from_live_combat_state(self):
+        self.assertIn('id="recommendButton"', INDEX)
+        self.assertIn("function forgeCombatSnapshot()", GAME)
+        self.assertIn('generateWeapon("", { recommend: true })', GAME)
+        self.assertIn("combatState: forgeCombatSnapshot()", GAME)
+        self.assertIn(".recommend-button", STYLES)
+
+    def test_orbit_release_homing_is_distinct_from_fixed_orbit(self):
+        self.assertIn("function orbitLaunchPoint(weapon, index, count)", GAME)
+        self.assertIn('const orbitLaunch = Boolean(weapon.orbit_launch && weapon.trajectory === "homing")', GAME)
+        self.assertIn("projectile.hitIds,", GAME)
+        self.assertIn("!excludedIds?.has(enemy.id)", GAME)
+        self.assertIn('weapon.delivery !== "orbit" && !weapon.orbit_launch', GAME)
+        self.assertIn('if (weapon.orbit_launch && weapon.delivery === "projectile")', GAME)
+        projectile_fire = GAME[GAME.index("function fireProjectile"):GAME.index("function fireBeam")]
+        self.assertIn("if (orbitLaunch)", projectile_fire)
+
     def test_weapon_stats_audio_and_visual_budget_are_explicit(self):
         self.assertIn('makeMiniStat("DPS", dps)', GAME)
         self.assertIn('makeMiniStat("攻速", `${attacksPerSecond}/s`)', GAME)
@@ -88,6 +105,62 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn('audio.shoot("projectile", weapon)', GAME)
         self.assertIn("function friendlyVfxAlpha()", GAME)
         self.assertIn('effect.source === "enemy"', GAME)
+
+    def test_adaptive_score_tracks_stage_pressure_and_boss_state(self):
+        self.assertIn("updateScore(gameState, boss, enemyCount)", GAME)
+        self.assertIn('const mode = boss ? `boss-${boss.bossIndex}` : `stage-${stageIndex}`', GAME)
+        self.assertIn("this.ambientWash(stageIndex, boss ? .88", GAME)
+        self.assertIn("audio.updateScore(state, currentBoss, enemies.length)", GAME)
+        self.assertIn("audio.stageShift(state.stageIndex)", GAME)
+        self.assertIn("audio.setEnabled(!audio.enabled)", GAME)
+
+    def test_every_stage_has_a_guaranteed_large_midpoint_elite_squad(self):
+        self.assertIn('{ offset: 90, kind: "mid_elite" }', GAME)
+        self.assertIn("const stageEliteSquads = [", GAME)
+        self.assertIn("function promoteEnemyToElite(enemy, profile = {})", GAME)
+        self.assertIn("enemy.radius *= Math.max(1.25", GAME)
+        self.assertIn("spawnStageEliteSquad(stageIndex, true)", GAME)
+        for elite_name in ("蓝幕执政官·折光冠", "紫孢母皇·万巢", "雷鸣主星·赫兹", "憎恨织主·红寂"):
+            self.assertIn(elite_name, GAME)
+
+    def test_bosses_have_larger_presence_radii(self):
+        self.assertIn('radius: 56, damage: 18', GAME)
+        self.assertIn('radius: 68, damage: 24', GAME)
+        self.assertIn('radius: 82, damage: 29', GAME)
+        self.assertIn("const presencePulse = 1 + Math.sin", GAME)
+        self.assertIn("audio.boss(index)", GAME)
+
+    def test_upgrades_have_distinct_relic_patron_and_ai_ceremonies(self):
+        self.assertIn('id="upgradeCeremony"', INDEX)
+        self.assertIn("async function playUpgradeCeremony(upgrade)", GAME)
+        self.assertIn("async function playAICeremony(", GAME)
+        self.assertIn('type: "patron"', GAME)
+        self.assertIn('type: "relic"', GAME)
+        self.assertIn('type: "ai"', GAME)
+        self.assertIn("audio.boon(patronId)", GAME)
+        self.assertIn("audio.relic(profileId)", GAME)
+        self.assertIn("audio.mutation()", GAME)
+        self.assertIn(".ceremony-patron", STYLES)
+        self.assertIn(".ceremony-patron-name", STYLES)
+        self.assertIn("patron-color-rift", STYLES)
+        self.assertIn("relic-stamp-in", STYLES)
+        self.assertIn('duration: 650', GAME)
+        self.assertIn('partner ? 78 : 58', GAME)
+        self.assertIn(".ceremony-ai", STYLES)
+        self.assertIn('id="ceremonyAiWeaponCanvas"', INDEX)
+        self.assertIn("function renderAICeremonyBlueprint(weapon", GAME)
+        self.assertIn("drawWeaponModel(blueprintCtx, weapon", GAME)
+        self.assertIn("SCAN</span><span>DECOMPOSE</span><span>LOCK", INDEX)
+        self.assertIn("weapon: previewWeapon", GAME)
+
+    def test_all_seven_patrons_have_original_portrait_assets(self):
+        portrait_names = (
+            "white-raven.webp", "red-sun.webp", "sleeping-moon.webp", "spore-mother.webp",
+            "thunder-beast.webp", "blind-star.webp", "stargazer.webp",
+        )
+        for portrait_name in portrait_names:
+            self.assertIn(f'assets/patrons/{portrait_name}', GAME)
+            self.assertTrue((ROOT / "assets" / "patrons" / portrait_name).is_file())
 
 
 if __name__ == "__main__":

@@ -97,8 +97,8 @@
               <div><span>残响库存</span><strong id="profileEchoes">0</strong></div>
             </div>
             <div class="difficulty-picker" id="difficultyPicker" aria-label="难度选择">
-              <button class="active" data-difficulty="normal" type="button"><strong>标准航线</strong><span>完整 3 阶段远征</span></button>
-              <button data-difficulty="hate" type="button"><strong>憎恨航线</strong><span>敌人 +35% · 收益 +50%</span></button>
+              <button class="active" data-difficulty="normal" type="button"><strong>标准航线</strong><span>标准敌人 · 普通收益</span></button>
+              <button data-difficulty="hate" type="button"><strong>深空航线</strong><span>敌人 +35% · 收益 +50%</span></button>
             </div>
             <button class="primary-button" id="startButton">
               <span id="startButtonLabel">开始游戏</span><kbd>ENTER</kbd>
@@ -194,6 +194,37 @@
     </section>
   </div>
 
+  <section class="upgrade-ceremony" id="upgradeCeremony" aria-live="polite" aria-atomic="true" hidden>
+    <div class="ceremony-backdrop"></div>
+    <div class="ceremony-scanlines"></div>
+    <div class="ceremony-orbit ceremony-orbit-a"></div>
+    <div class="ceremony-orbit ceremony-orbit-b"></div>
+    <div class="ceremony-particles" id="ceremonyParticles" aria-hidden="true"></div>
+    <img class="ceremony-portrait ceremony-portrait-primary" id="ceremonyPortrait" alt="" hidden>
+    <img class="ceremony-portrait ceremony-portrait-secondary" id="ceremonyPortraitSecondary" alt="" hidden>
+    <div class="ceremony-patron-name" id="ceremonyPatronName" aria-hidden="true"></div>
+    <div class="ceremony-ai-blueprint" id="ceremonyAiBlueprint" aria-hidden="true" hidden>
+      <span class="ai-blueprint-index">DREAMWEAVER // LIVE SCHEMATIC</span>
+      <div class="ai-blueprint-stage">
+        <i class="ai-blueprint-corner corner-a"></i>
+        <i class="ai-blueprint-corner corner-b"></i>
+        <i class="ai-blueprint-corner corner-c"></i>
+        <i class="ai-blueprint-corner corner-d"></i>
+        <div class="ai-blueprint-reticle"></div>
+        <canvas id="ceremonyAiWeaponCanvas" width="760" height="250"></canvas>
+        <div class="ai-blueprint-nodes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="ai-compile-track"><i></i><span>SCAN</span><span>DECOMPOSE</span><span>LOCK</span></div>
+      <div class="ai-blueprint-meta"><span id="ceremonyAiForm">FORM // UNKNOWN</span><b id="ceremonyAiCode">GENE // 00</b></div>
+    </div>
+    <div class="ceremony-sigil" id="ceremonySigil" aria-hidden="true">✦</div>
+    <div class="ceremony-copy">
+      <span id="ceremonyKicker">RELIC SYNCHRONIZED</span>
+      <h2 id="ceremonyTitle">强化完成</h2>
+      <p id="ceremonySubtitle"></p>
+    </div>
+  </section>
+
   <div class="modal-backdrop" id="archiveModal" hidden>
     <section class="archive-modal" role="dialog" aria-modal="true" aria-labelledby="archiveTitle">
       <header>
@@ -235,7 +266,9 @@
             <span class="char-count"><b id="charCount">0</b>/180</span>
           </div>
           <div class="form-actions">
-            <button class="skip-button" type="button" id="skipButton" hidden>无预设方案</button>
+            <button class="recommend-button" type="button" id="recommendButton">
+              <span>◎</span><b>AI 系统推荐</b><small>读取当前战况并补足构筑短板</small>
+            </button>
             <button class="forge-button" type="submit" id="forgeButton">
               <span class="button-icon">✦</span>
               <span>让武器成形</span>
