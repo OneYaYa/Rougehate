@@ -2,6 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <script>
+    if (new URLSearchParams(location.search).get("trailer") === "1") {
+      document.documentElement.classList.add("trailer-capture-boot");
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#09090d">
   <meta name="description" content="用一句话创造武器，在三阶段星海远征中击败敌人的肉鸽游戏。">

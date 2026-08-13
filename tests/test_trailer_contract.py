@@ -30,6 +30,7 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn("63 项专属赐福", TRAILER)
         self.assertIn("function showPatronRoster()", TRAILER)
         self.assertIn('title: "太阳的指纹"', TRAILER)
+        self.assertIn("击杀后留下太阳残焰，持续灼烧附近敌群", TRAILER)
         self.assertIn(".rh-trailer-patrons", TRAILER_CSS)
         self.assertIn('title: evolvedWeapon.name', TRAILER)
         self.assertIn('weapon: evolvedWeapon', TRAILER)
@@ -57,17 +58,20 @@ class TrailerContractTests(unittest.TestCase):
         self.assertLess(TRAILER.index("stageLastStand();"), TRAILER.index("openForge(4);"))
         self.assertLess(TRAILER.index("openForge(4);"), TRAILER.index("stageForgedComeback();"))
 
-    def test_last_stand_is_stationary_and_finale_has_three_builds(self):
-        last_stand_shot = TRAILER[TRAILER.index("later(13.88"):TRAILER.index("later(17.55")]
-        self.assertIn("cameraMove(0, 0, 0, 0, .2);", last_stand_shot)
-        self.assertNotIn("dash(", last_stand_shot)
-        self.assertNotIn('drive("Key', last_stand_shot)
-        self.assertIn("const arrivalWindow = 3.7;", TRAILER)
-        self.assertIn("(distance - 98) / arrivalWindow", TRAILER)
+    def test_last_stand_uses_organic_pursuit_and_finale_has_three_builds(self):
+        last_stand_shot = TRAILER[TRAILER.index("later(13.65"):TRAILER.index("later(17.8")]
+        self.assertIn('drive("KeyA", "KeyW")', last_stand_shot)
+        self.assertIn('dash("KeyA", "KeyW")', last_stand_shot)
+        self.assertIn("cameraMove(-34, 14, 38, -16, 4.0);", last_stand_shot)
+        last_stand_setup = TRAILER[TRAILER.index("function stageLastStand()"):TRAILER.index("function stageForgedComeback()")]
+        self.assertIn("const packs = [", last_stand_setup)
+        self.assertIn("seedAmbushBarrage();", last_stand_setup)
+        self.assertNotIn("index / enemies.length * Math.PI * 2", last_stand_setup)
         self.assertNotIn("五件武器。杀出去。", TRAILER)
         for function in ("function stageHunterBuild()", "function stageStormBuild()", "function stageSingularityBuild()"):
             self.assertIn(function, TRAILER)
         self.assertIn("function seedEnemyBarrage", TRAILER)
+        self.assertIn("seedEnemyBarrage(colors, 1, 10, 112)", TRAILER)
 
     def test_renderer_rebuilds_readme_preview(self):
         self.assertIn("def build_preview", RENDERER)
@@ -79,10 +83,19 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn('body.classList.add("trailer-forge-input-closeup")', TRAILER)
         self.assertIn('body.classList.remove("trailer-forge-input-closeup")', TRAILER)
         self.assertIn("trailer-forge-input-closeup .input-frame textarea", TRAILER_CSS)
+        self.assertIn("trailer-forge-input-closeup .forge-header", TRAILER_CSS)
+        self.assertIn("trailer-forge-input-closeup .char-count", TRAILER_CSS)
+        self.assertIn('body.classList.add("trailer-forge-result")', TRAILER)
         self.assertIn("def add_keypress", RENDERER)
         self.assertIn("add_keypress(track, at, index", RENDERER)
-        self.assertIn("CAPTURE_PREROLL = 0.0", RENDERER)
-        self.assertIn("VIDEO_SYNC_DELAY = 0.62", RENDERER)
+        self.assertIn("OUTPUT_FPS = 25", RENDERER)
+        self.assertIn("def detect_capture_inpoint", RENDERER)
+
+    def test_capture_hides_boot_frames_and_has_no_fake_letterbox(self):
+        self.assertIn('classList.add("trailer-capture-boot")', (ROOT / "index.html").read_text(encoding="utf-8"))
+        self.assertIn('classList.remove("trailer-capture-boot")', TRAILER)
+        self.assertNotIn("rh-trailer-letterbox", TRAILER)
+        self.assertNotIn("rh-trailer-letterbox", TRAILER_CSS)
 
 
 if __name__ == "__main__":

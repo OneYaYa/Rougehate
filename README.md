@@ -8,7 +8,7 @@
 [![ROUGE HATE 新版实机玩法宣传片](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-gameplay-trailer-final.mp4)
 
 <p align="center">
-  <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ 观看 / 下载 1080p · 30 FPS 完整宣传片</strong></a>
+  <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ 观看 / 下载 1080p · 25 FPS 完整宣传片</strong></a>
 </p>
 
 宣传片以一场绝境反击呈现核心玩法：自定义战斗身份、移动与虫洞冲刺、七神赐福、敌群合围与濒死压迫、自然语言 AI 锻造特写、生成武器清场、武器蓝图重构，以及追猎星群、雷暴光束、奇点环绕三种后期构筑。全部战斗画面均由浏览器中的实时 Canvas 玩法录制，配乐、逐字键盘音与转场音效为本地程序化原创。
@@ -121,7 +121,7 @@ python -m py_compile server.py
 <details>
 <summary><strong>重新录制宣传片</strong></summary>
 
-导演模式位于 `?trailer=1`，只用于确定性实机录制，不会影响正常游戏。当前分镜约 49 秒，采用“爆点冷开场 → 身份定义 → 早期生存 → 七神赐福阵列 → 中心绝境合围 → 输入愿望特写 → AI 武器逆转清场 → 武器蓝图重构 → 三种后期构筑”的递进结构。七神片段集中展示新版原创立绘、**7 位独特的宇宙神祇 / 63 项专属赐福**与实际赐福揭晓演出；异变片段会直接展示当前武器的实时轮廓与扫描、拆解、锁定流程。绝境段锁定飞船与镜头，让高速敌群和密集弹幕在贴脸前切入输入框。输入阶段隐藏周边界面，并让逐字键盘音与构想文字同步。反击与终局段再恢复横穿、变向和冲刺。
+导演模式位于 `?trailer=1`，只用于确定性实机录制，不会影响正常游戏。当前分镜约 49 秒，采用“爆点冷开场 → 身份定义 → 早期生存 → 七神赐福阵列 → 具体赐福效果 → 多方向追逃绝境 → AI 锻造输入 → 生成武器逆转 → 武器蓝图重构 → 三种后期构筑”的递进结构。七神片段集中展示新版原创立绘、**7 位独特的宇宙神祇 / 63 项专属赐福**，随后用“太阳的指纹”明确展示击杀残焰与范围灼烧效果；异变片段会直接展示当前武器的实时轮廓与扫描、拆解、锁定流程。绝境段由不同方向、不同速度与不同职责的敌群切断撤离路线，玩家会持续走位和冲刺，不再使用同步收缩的规则圆环。输入阶段保留 AI 锻造标题、输入框、字数与提交按钮，并让逐字键盘音与构想文字同步。反击与终局段使用为实时录制校准过的特效预算，保持清晰和稳定。
 
 ```powershell
 python -m pip install numpy imageio-ffmpeg playwright
@@ -130,6 +130,6 @@ python tools\render_trailer.py
 
 录制器默认调用 Windows 上已安装的 Google Chrome。
 
-输出文件为 `trailer-output/rouge-hate-gameplay-trailer-final.mp4`，规格为 H.264 High / AAC Stereo / 1920×1080 / 30 FPS；脚本会同步重建 README 顶部的轻量预览动图。
+输出文件为 `trailer-output/rouge-hate-gameplay-trailer-final.mp4`，规格为 H.264 High / AAC Stereo / 1920×1080 / 25 FPS；25 FPS 与 Playwright 原生录制帧率一致，避免 25→30 转换造成的不均匀重复帧。脚本会自动裁掉录制器启动阶段、执行卡顿审计，并同步重建 README 顶部的轻量预览动图。
 
 </details>

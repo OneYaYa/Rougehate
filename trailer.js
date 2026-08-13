@@ -12,6 +12,7 @@
   const baseDamageEnemy = damageEnemy;
   const baseFloatText = floatText;
   const baseKillEnemy = killEnemy;
+  const baseBurst = burst;
   damageEnemy = function trailerDamageGuard(enemy, amount, sourceWeapon, ...rest) {
     lastDamageCall = {
       amount, weapon: sourceWeapon?.name, delivery: sourceWeapon?.delivery,
@@ -38,11 +39,12 @@
     xpGems = [];
     return result;
   };
+  burst = function trailerBurstBudget(x, y, color, count, speed) {
+    return baseBurst(x, y, color, Math.min(Number(count) || 0, 8), speed);
+  };
 
   const layer = document.createElement("div");
   layer.innerHTML = `
-    <div class="rh-trailer-letterbox top"></div>
-    <div class="rh-trailer-letterbox bottom"></div>
     <div class="rh-trailer-vignette"></div>
     <div class="rh-trailer-badge">实机画面</div>
     <div class="rh-trailer-copy"><span class="kicker"></span><strong></strong><p></p></div>
@@ -157,6 +159,16 @@
     ui.gameOver.hidden = true;
   }
 
+  function clearCombatResidue() {
+    enemies = [];
+    projectiles = [];
+    enemyProjectiles = [];
+    effects = [];
+    particles = [];
+    pendingAttacks = [];
+    currentBoss = null;
+  }
+
   function showPatronRoster() {
     state.paused = true;
     hideModals();
@@ -235,6 +247,43 @@
     }
   }
 
+  function trailerNoise(index, salt = 0) {
+    const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453;
+    return value - Math.floor(value);
+  }
+
+  function seedAmbushBarrage() {
+    enemyProjectiles = [];
+    const lanes = [
+      { angle: -2.48, count: 11, color: "#ff5a72", distance: 440 },
+      { angle: -.18, count: 9, color: "#ff9b54", distance: 525 },
+      { angle: 1.88, count: 8, color: "#b66cff", distance: 485 },
+    ];
+    lanes.forEach((lane, laneIndex) => {
+      for (let index = 0; index < lane.count; index += 1) {
+        const lateral = (index - (lane.count - 1) / 2) * (19 + laneIndex * 3);
+        const distance = lane.distance + trailerNoise(index, laneIndex + 8) * 190;
+        const normalX = -Math.sin(lane.angle);
+        const normalY = Math.cos(lane.angle);
+        const x = player.x + Math.cos(lane.angle) * distance + normalX * lateral;
+        const y = player.y + Math.sin(lane.angle) * distance + normalY * lateral;
+        const aim = Math.atan2(player.y - y, player.x - x) + (trailerNoise(index, laneIndex + 14) - .5) * .16;
+        const speed = 104 + trailerNoise(index, laneIndex + 21) * 82;
+        enemyProjectiles.push({
+          x, y,
+          vx: Math.cos(aim) * speed,
+          vy: Math.sin(aim) * speed,
+          radius: 4.2 + trailerNoise(index, laneIndex + 31) * 2.2,
+          damage: 0,
+          color: lane.color,
+          life: 6.5,
+          phase: index * .47 + laneIndex,
+          dead: false,
+        });
+      }
+    });
+  }
+
   function stageLastStand() {
     configureRun(0, false);
     weapons = [weapon({
@@ -248,20 +297,28 @@
     bonuses.area = .82;
     bonuses.projectiles = 0;
     bonuses.pierce = 0;
-    spawnHorde(84, false);
-    const arrivalWindow = 3.7;
+    spawnHorde(56, false);
+    const packs = [
+      { angle: -2.5, spread: .78, near: 235, speed: 108 },
+      { angle: -.12, spread: .58, near: 330, speed: 91 },
+      { angle: 1.9, spread: .72, near: 285, speed: 99 },
+      { angle: 2.72, spread: .34, near: 465, speed: 126 },
+    ];
     enemies.forEach((enemy, index) => {
-      const angle = index / enemies.length * Math.PI * 2 + (index % 3) * .08;
-      const radius = 520 + (index % 6) * 44;
+      const pack = packs[index % packs.length];
+      const angle = pack.angle + (trailerNoise(index, 2) - .5) * pack.spread;
+      const radius = pack.near + trailerNoise(index, 5) * 310 + Math.floor(index / packs.length) * 4;
       enemy.x = player.x + Math.cos(angle) * radius;
-      enemy.y = player.y + Math.sin(angle) * radius * .8;
-      enemy.behavior = "chaser";
-      const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
-      enemy.speed = Math.max(82, (distance - 98) / arrivalWindow);
+      enemy.y = player.y + Math.sin(angle) * radius;
+      if (index % 9 === 0) enemy.behavior = "charger";
+      else if (index % 5 === 0) enemy.behavior = "flanker";
+      else enemy.behavior = "chaser";
+      enemy.speed = pack.speed * (.78 + trailerNoise(index, 11) * .48);
+      enemy.abilityTimer = .35 + trailerNoise(index, 19) * 1.4;
       enemy.hp = enemy.maxHp = 360;
       enemy.damage = 0;
     });
-    seedEnemyBarrage(["#ff365f", "#ff8a4c", "#b66cff"], 4, 18, 68);
+    seedAmbushBarrage();
     player.hp = 18;
     player.invulnerable = 999;
     updateLoadoutUI();
@@ -271,18 +328,21 @@
   function stageForgedComeback() {
     configureRun(2, false);
     weapons = [starSwarmWeapon()];
-    bonuses.damage = 1.82;
-    bonuses.cooldown = .52;
-    bonuses.area = 1.42;
-    bonuses.projectiles = 3;
-    bonuses.pierce = 5;
-    bonuses.chainChance = 1;
-    bonuses.chainTargets = 8;
-    bonuses.chainDamage = .88;
-    bonuses.explosion = 62;
-    bonuses.singularityPull = 34;
-    bonuses.mutationAmp = .42;
-    spawnHorde(78, false);
+    weapons[0].cooldown = .48;
+    weapons[0].projectile_count = 5;
+    weapons[0].damage = 88;
+    bonuses.damage = 1.64;
+    bonuses.cooldown = .82;
+    bonuses.area = 1.28;
+    bonuses.projectiles = 0;
+    bonuses.pierce = 2;
+    bonuses.chainChance = .42;
+    bonuses.chainTargets = 2;
+    bonuses.chainDamage = .72;
+    bonuses.explosion = 32;
+    bonuses.singularityPull = 18;
+    bonuses.mutationAmp = .24;
+    spawnHorde(16, false);
     enemies.forEach((enemy, index) => {
       const angle = index / enemies.length * Math.PI * 2 + (index % 4) * .11;
       const radius = 128 + (index % 9) * 43;
@@ -299,24 +359,24 @@
     updateHUD();
   }
 
-  function prepareLateBuild(arsenal, colors, includeBoss = false, count = 88) {
+  function prepareLateBuild(arsenal, colors, includeBoss = false, count = 52) {
     configureRun(3, includeBoss);
     weapons = arsenal;
     for (const item of weapons) item.forgeTier = 3;
-    bonuses.damage = 1.72;
-    bonuses.cooldown = .42;
-    bonuses.area = 1.72;
-    bonuses.range = 1.3;
-    bonuses.projectiles = 4;
-    bonuses.pierce = 7;
-    bonuses.crit = .52;
-    bonuses.chainChance = 1;
-    bonuses.chainTargets = 10;
-    bonuses.chainDamage = .86;
-    bonuses.explosion = 68;
-    bonuses.singularityPull = 44;
-    bonuses.singularityDeath = .75;
-    bonuses.mutationAmp = .48;
+    bonuses.damage = 1.52;
+    bonuses.cooldown = .88;
+    bonuses.area = 1.42;
+    bonuses.range = 1.2;
+    bonuses.projectiles = 0;
+    bonuses.pierce = 3;
+    bonuses.crit = .38;
+    bonuses.chainChance = .34;
+    bonuses.chainTargets = 2;
+    bonuses.chainDamage = .7;
+    bonuses.explosion = 38;
+    bonuses.singularityPull = 28;
+    bonuses.singularityDeath = .42;
+    bonuses.mutationAmp = .28;
     spawnHorde(count, includeBoss);
     enemies.forEach((enemy, index) => {
       if (enemy.boss) return;
@@ -332,7 +392,7 @@
         enemy.shootTimer = .08 + (index % 3) * .08;
       }
     });
-    seedEnemyBarrage(colors, 4, 18, 122);
+    seedEnemyBarrage(colors, 1, 10, 112);
     player.hp = player.maxHp;
     player.invulnerable = 999;
     updateLoadoutUI();
@@ -368,18 +428,18 @@
 
   function stageHunterBuild() {
     const swarm = starSwarmWeapon();
-    swarm.cooldown = .17;
-    swarm.projectile_count = 10;
-    swarm.damage = 72;
-    swarm.explosion_radius = 58;
-    prepareLateBuild([swarm], ["#ff365f", "#ff9b54"], false, 92);
+    swarm.cooldown = .42;
+    swarm.projectile_count = 6;
+    swarm.damage = 132;
+    swarm.explosion_radius = 42;
+    prepareLateBuild([swarm], ["#ff365f", "#ff9b54"], false, 14);
   }
 
   function stageStormBuild() {
     const forkedBeam = weapon({
       name: "万伏雷鳗", delivery: "beam", visual_form: "staff", visual_variant: 6,
       secondary_color: "#f1ffff", visual_motif: "横穿星海的雷鳗脊骨",
-      damage: 76, cooldown: .16, range: 1040, projectile_size: 18, color: "#63efff",
+      damage: 128, cooldown: .38, range: 1040, projectile_size: 16, color: "#63efff",
       mutations: [
         mutation("fork", "三叉雷脊", "#63efff"),
         mutation("chain", "万伏回响", "#ffffff"),
@@ -389,29 +449,68 @@
     const stormCore = weapon({
       name: "雷暴核心", delivery: "aura", visual_form: "orb", visual_variant: 12,
       secondary_color: "#151349", visual_motif: "不断过载的蓝白脉冲核",
-      damage: 58, cooldown: .18, range: 285, projectile_size: 24,
-      explosion_radius: 76, slow_percent: .28, color: "#9ffcff",
+      damage: 104, cooldown: .65, range: 285, projectile_size: 22,
+      explosion_radius: 62, slow_percent: .28, color: "#9ffcff",
       mutations: [mutation("nova", "脉冲星", "#9ffcff"), mutation("aftershock", "复震", "#b66cff")],
     });
-    prepareLateBuild([forkedBeam, stormCore], ["#ff5a72", "#ffb347", "#b66cff"], false, 86);
+    prepareLateBuild([forkedBeam, stormCore], ["#ff5a72", "#ffb347", "#b66cff"], false, 12);
   }
 
   function stageSingularityBuild() {
     const voidEyes = weapon({
       name: "十二颗虚空之眼", delivery: "orbit", visual_form: "drone", visual_variant: 21,
       secondary_color: "#11051f", visual_motif: "环绕猎物收紧的奇点眼群",
-      damage: 64, cooldown: .15, projectile_count: 12, projectile_size: 18,
+      damage: 126, cooldown: .44, projectile_count: 5, projectile_size: 19,
       range: 205, color: "#8b72ff",
       mutations: [mutation("orbit_salvo", "群星齐射", "#73efff"), mutation("nova", "死星花", "#ff5fc8")],
     });
     const eventHorizon = weapon({
       name: "事件视界", delivery: "aura", visual_form: "orb", visual_variant: 21,
       secondary_color: "#050208", visual_motif: "向内坍缩的紫黑引力井",
-      damage: 92, cooldown: .22, range: 390, projectile_size: 28,
-      explosion_radius: 112, slow_percent: .38, color: "#b66cff",
+      damage: 148, cooldown: .58, range: 390, projectile_size: 30,
+      explosion_radius: 92, slow_percent: .38, color: "#b66cff",
       mutations: [mutation("aftershock", "二次坍缩", "#b66cff"), mutation("nova", "终焉脉冲", "#ff5fc8")],
     });
-    prepareLateBuild([voidEyes, eventHorizon], ["#ff365f", "#ff5fc8", "#9b5cff"], true, 82);
+    prepareLateBuild([voidEyes, eventHorizon], ["#ff365f", "#ff5fc8", "#9b5cff"], true, 12);
+  }
+
+  function stageOpeningHook() {
+    configureRun(1, false);
+    state.stageIndex = 2;
+    state.time = 705;
+    state.level = 38;
+    const swarm = starSwarmWeapon();
+    swarm.cooldown = .54;
+    swarm.projectile_count = 5;
+    swarm.damage = 112;
+    const voidEyes = weapon({
+      name: "七颗虚空之眼", delivery: "orbit", visual_form: "drone", visual_variant: 21,
+      secondary_color: "#130922", visual_motif: "错层环绕的奇点眼",
+      damage: 112, cooldown: .5, projectile_count: 5, projectile_size: 18,
+      range: 188, color: "#8b72ff",
+      mutations: [mutation("orbit_salvo", "群星齐射", "#73efff")],
+    });
+    weapons = [swarm, voidEyes];
+    bonuses.damage = 1.48;
+    bonuses.cooldown = .86;
+    bonuses.area = 1.34;
+    bonuses.projectiles = 0;
+    bonuses.pierce = 2;
+    bonuses.crit = .36;
+    bonuses.chainChance = .42;
+    bonuses.chainTargets = 3;
+    bonuses.chainDamage = .68;
+    bonuses.explosion = 42;
+    bonuses.singularityPull = 24;
+    bonuses.singularityDeath = .32;
+    bonuses.mutationAmp = .22;
+    spawnHorde(16, true);
+    seedEnemyBarrage(["#ff365f", "#b66cff"], 1, 8, 106);
+    player.invulnerable = 999;
+    updateLoadoutUI();
+    invalidateSynergies();
+    updateSynergyUI();
+    updateHUD();
   }
 
   function configureRun(tier, includeBoss = false) {
@@ -528,14 +627,50 @@
     });
   }
 
-  // 00.0–03.2 — Cold-open on the payoff. The avatar crosses the frame,
+  function startTrailer() {
+    // Build the opening combat tableau while the capture mask is still up.
+    // This keeps one-time entity/VFX allocation out of the first visible beat.
+    ui.intro.classList.add("dismissed");
+    selectedArchetype = defaultArchetype("会瞬移并用引力短刃切开虫洞的相位刺客");
+    body.classList.add("trailer-focus-combat");
+    zoom("void");
+    resizeCanvas();
+    stageOpeningHook();
+    document.documentElement.classList.remove("trailer-capture-boot");
+    document.documentElement.dataset.trailerStarted = "1";
+    const auditStarted = performance.now();
+    let lastAuditFrame = performance.now();
+    let maxFrameGap = 0;
+    let slowFrameCount = 0;
+    const slowestFrames = [];
+    const slowFramesByWindow = {};
+    let frameAudit = requestAnimationFrame(function auditFrame(now) {
+      const gap = now - lastAuditFrame;
+      const elapsed = (now - auditStarted) / 1000;
+      if (particles.length > 90) particles = particles.slice(-90);
+      if (effects.length > 120) {
+        const protectedEffects = effects.filter((effect) => effect.source === "enemy" || effect.type === "screen");
+        const friendlyEffects = effects.filter((effect) => effect.source !== "enemy" && effect.type !== "screen").slice(-80);
+        effects = protectedEffects.concat(friendlyEffects).slice(-120);
+      }
+      if (projectiles.length > 96) projectiles = projectiles.slice(-96);
+      if (elapsed > .75) maxFrameGap = Math.max(maxFrameGap, gap);
+      if (elapsed > .75 && gap > 52) {
+        slowFrameCount += 1;
+        const windowStart = Math.floor(elapsed / 5) * 5;
+        slowFramesByWindow[`${windowStart}-${windowStart + 5}`] = (slowFramesByWindow[`${windowStart}-${windowStart + 5}`] || 0) + 1;
+      }
+      if (elapsed > .75 && gap > 80) {
+        slowestFrames.push({ at: elapsed, gap });
+        slowestFrames.sort((a, b) => b.gap - a.gap);
+        slowestFrames.length = Math.min(12, slowestFrames.length);
+      }
+      lastAuditFrame = now;
+      frameAudit = requestAnimationFrame(auditFrame);
+    });
+
+  // 00.0–03.0 — Cold-open on the payoff. The avatar crosses the frame,
   // changes direction and dashes twice before the trailer asks for attention.
-  ui.intro.classList.add("dismissed");
-  selectedArchetype = defaultArchetype("会瞬移并用引力短刃切开虫洞的相位刺客");
-  body.classList.add("trailer-focus-combat");
-  zoom("void");
-  resizeCanvas();
-  configureRun(3, true);
   drive("KeyD", "KeyW");
   cameraMove(-155, 72, 150, -48, 3.05);
   later(.28, () => caption("", "写下武器。杀出去。", "", "#78eaff", "hero-copy"));
@@ -544,8 +679,8 @@
   later(1.58, () => drive("KeyD", "KeyS"));
   later(2.18, () => dash("KeyD", "KeyS"));
 
-  // 03.2–06.4 — Rewind to the player's fantasy becoming a playable identity.
-  later(3.18, () => {
+  // 03.0–06.2 — Rewind to the player's fantasy becoming a playable identity.
+  later(3.0, () => {
     hit("#d8f7ff");
     drive();
     zoom();
@@ -553,6 +688,7 @@
     resizeCanvas();
     state.running = false;
     state.paused = true;
+    clearCombatResidue();
     openArchetypeSelection();
     ui.archetypeInput.value = "";
     ui.archetypeCount.textContent = "0";
@@ -568,15 +704,15 @@
       label.textContent = ["近战勇士", "异星猎人", "星图术士"][index];
     });
   });
-  later(3.52, () => typeInto(ui.archetypeInput, "会瞬移，用引力短刃切开虫洞的相位刺客。", 1.45));
-  later(5.05, () => {
+  later(3.34, () => typeInto(ui.archetypeInput, "会瞬移，用引力短刃切开虫洞的相位刺客。", 1.42));
+  later(4.9, () => {
     ui.archetypeStatus.hidden = false;
     ui.archetypeConfirm.disabled = true;
     ui.archetypeConfirmLabel.textContent = "生成中…";
   });
 
-  // 06.4–10.9 — Honest early-run survival with a long traversal and dash arc.
-  later(6.38, () => {
+  // 06.2–10.5 — Honest early-run survival with a long traversal and dash arc.
+  later(6.15, () => {
     hit("#58e6ff");
     clearCaption();
     hideModals();
@@ -594,73 +730,80 @@
     zoom("chaos");
     resizeCanvas();
     drive("KeyD");
-    cameraMove(-150, 48, 145, -38, 4.35);
+    cameraMove(-145, 46, 138, -36, 4.1);
     caption("", "走位。冲刺。活下去。", "", "#58e6ff", "compact-hero-copy");
   });
-  later(7.22, () => dash("KeyD", "KeyW"));
-  later(8.08, () => drive("KeyD", "KeyS"));
-  later(8.38, clearCaption);
-  later(8.92, () => dash("KeyD", "KeyS"));
-  later(9.72, () => drive("KeyD", "KeyW"));
-  later(10.32, () => dash("KeyD", "KeyW"));
+  later(6.98, () => dash("KeyD", "KeyW"));
+  later(7.8, () => drive("KeyD", "KeyS"));
+  later(8.14, clearCaption);
+  later(8.68, () => dash("KeyD", "KeyS"));
+  later(9.42, () => drive("KeyD", "KeyW"));
+  later(10.02, () => dash("KeyD", "KeyW"));
 
-  // 10.9–13.9 — Seven original patrons arrive as a complete visual roster,
-  // then one boon lands through the same full-screen ceremony used in play.
-  later(10.88, () => {
+  // 10.5–13.7 — Establish the patron roster, then hold long enough to read
+  // one concrete boon and understand what it changes in combat.
+  later(10.5, () => {
     hit("#ffd166");
     drive();
     cameraMove(0, 0, 0, 0, .2);
     zoom();
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
+    clearCombatResidue();
     showPatronRoster();
   });
-  later(12.42, () => {
+  later(11.75, () => {
     hidePatronRoster();
     hit("#ff754f", "soft");
+    body.classList.add("trailer-boon-focus");
     void showCeremony({
       type: "patron",
       profile: ceremonyProfiles.blaze,
       seed: "trailer-red-sun-boon",
       kicker: "PATRON BOON / 赤日",
       title: "太阳的指纹",
-      subtitle: "“喜欢看尸体继续燃烧。” · COMMON / 普通",
+      subtitle: "击杀后留下太阳残焰，持续灼烧附近敌群 · 普通赐福",
       sigil: "♨",
       patron: patronDefinitions.blaze,
-      duration: 1080,
+      duration: 1550,
     });
   });
 
-  // 13.9–17.6 — The fantasy collapses into a last stand. Cut away at the exact
-  // moment the fast-moving ring is about to touch the stationary player.
-  later(13.88, () => {
+  // 13.7–17.8 — Three staggered packs cut off a moving player from different
+  // lanes. Uneven speeds and flanking behavior keep the pressure organic.
+  later(13.65, () => {
     hit("#ff365f");
     hidePatronRoster();
+    body.classList.remove("trailer-boon-focus");
     clearCaption();
     stageLastStand();
     body.classList.add("trailer-focus-combat");
     body.classList.add("trailer-critical");
     zoom("chaos");
     resizeCanvas();
-    drive();
-    cameraMove(0, 0, 0, 0, .2);
-    caption("", "退无可退。", "", "#ff5a72", "compact-hero-copy");
+    drive("KeyA", "KeyW");
+    cameraMove(-34, 14, 38, -16, 4.0);
+    caption("", "撤离路线被切断。", "", "#ff5a72", "compact-hero-copy");
   });
-  later(15.42, clearCaption);
+  later(14.4, () => dash("KeyA", "KeyW"));
+  later(15.05, () => drive("KeyD", "KeyW"));
+  later(15.62, () => dash("KeyD", "KeyW"));
+  later(15.86, clearCaption);
   later(16.25, () => {
     player.hp = 9;
     updateHUD();
     hit("#ff365f", "soft");
     caption("", "只剩一个愿望。", "", "#ff5a72", "compact-hero-copy");
   });
-  later(17.38, () => {
+  later(16.82, () => drive("KeyA", "KeyS"));
+  later(17.42, () => {
     drive();
     clearCaption();
   });
 
-  // 17.6–25.2 — Cut straight from the closing ring to the player writing an
-  // answer; the longer type-on keeps the core AI interaction fully readable.
-  later(17.55, () => {
+  // 17.8–25.2 — Cut from the failed escape into the actual AI forge UI. The
+  // title, input field, character counter and submit affordance stay visible.
+  later(17.8, () => {
     hit("#ff365f");
     drive();
     zoom("forge");
@@ -668,6 +811,7 @@
     body.classList.remove("trailer-critical");
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
+    clearCombatResidue();
     openForge(4);
     ui.forge.querySelector(".forge-rail span").textContent = "异梦";
     ui.forgeTitle.textContent = "最后一次锻造";
@@ -678,18 +822,22 @@
     ui.forgeButton.querySelector("span:not(.button-icon)").textContent = "开始锻造";
     ui.forgeButton.querySelector("small").textContent = "";
   });
-  later(18.18, () => typeInto(ui.wishInput, "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", 3.25));
-  later(22.02, () => {
+  later(18.32, () => typeInto(ui.wishInput, "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。", 3.45));
+  later(22.08, () => {
     ui.forgeButton.classList.add("trailer-ready");
     hit("#f3e9ff", "soft");
   });
-  later(22.48, () => {
+  later(22.7, () => {
     clearCaption();
     body.classList.remove("trailer-forge-input-closeup");
+    body.classList.add("trailer-forge-result");
+    zoom();
     ui.forgeButton.classList.remove("trailer-ready");
     ui.wishForm.hidden = true;
     previewWeapon = starSwarmWeapon();
     showWeaponResult(previewWeapon, ["投射数量与追踪强度已按终局预算稳定"]);
+    ui.forge.querySelector(".forge-modal").scrollTop = 0;
+    ui.forge.querySelector(".forge-main").scrollTop = 0;
     ui.resultName.textContent = "遮天幼星群";
     ui.resultDescription.textContent = "追猎。贯穿。折返。雷暴。";
     ui.resultTradeoff.textContent = "必须持续移动";
@@ -715,6 +863,7 @@
   later(25.15, () => {
     hit("#78eeff");
     clearCaption();
+    body.classList.remove("trailer-forge-result");
     stageForgedComeback();
     body.classList.add("trailer-focus-combat");
     zoom("storm");
@@ -738,8 +887,10 @@
     hit("#b06cff");
     drive();
     zoom();
+    body.classList.remove("trailer-forge-result");
     body.classList.remove("trailer-focus-combat");
     resizeCanvas();
+    clearCombatResidue();
     showMutationChoice();
   });
   later(32.68, () => {
@@ -815,12 +966,24 @@
     drive();
     zoom();
     state.paused = true;
+    clearCombatResidue();
     hideModals();
     clearCaption();
+    body.classList.remove("trailer-boon-focus", "trailer-forge-input-closeup", "trailer-forge-result");
     endCard.classList.add("visible");
   });
   later(49.22, () => {
     window.ROUGE_HATE_TRAILER_CAMERA = { x: 0, y: 0 };
+    cancelAnimationFrame(frameAudit);
+    document.documentElement.dataset.trailerMaxFrameGap = maxFrameGap.toFixed(1);
+    document.documentElement.dataset.trailerSlowFrames = String(slowFrameCount);
+    document.documentElement.dataset.trailerSlowestFrames = JSON.stringify(slowestFrames);
+    document.documentElement.dataset.trailerSlowFramesByWindow = JSON.stringify(slowFramesByWindow);
     document.documentElement.dataset.trailerComplete = "1";
   });
+  }
+
+  window.setTimeout(() => {
+    requestAnimationFrame(() => requestAnimationFrame(startTrailer));
+  }, 1600);
 })();

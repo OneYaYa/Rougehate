@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import subprocess
 import sys
 import time
@@ -29,8 +30,7 @@ RAW = OUTPUT / "raw" / time.strftime("%Y%m%d-%H%M%S")
 PORT = 8798
 DURATION = 49.22
 SAMPLE_RATE = 48_000
-CAPTURE_PREROLL = 0.0
-VIDEO_SYNC_DELAY = 0.62
+OUTPUT_FPS = 25
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
 
 
@@ -141,7 +141,7 @@ def build_soundtrack(path: Path) -> None:
 
     # A continuous sub-bed glues the four narrative chapters together.
     add_tone(track, 0, 46.0, 36.71, .09, .16, harmonics=(1, .35, .16))
-    add_tone(track, 3.18, 42.82, 73.42, .038, .15, pan=-.18, harmonics=(1, .22))
+    add_tone(track, 3.0, 43.0, 73.42, .038, .15, pan=-.18, harmonics=(1, .22))
 
     def rhythm(start: float, end: float, bpm: float, intensity: float,
                bright: float = 0.0, double_kick: bool = False) -> None:
@@ -168,44 +168,44 @@ def build_soundtrack(path: Path) -> None:
             at += step
             index += 1
 
-    # 0–3.18: open at the payoff with an immediate, compact hook.
-    rhythm(0, 3.18, 156, .78, .085, True)
+    # 0–3.00: open at the payoff with an immediate, compact hook.
+    rhythm(0, 3.0, 156, .78, .085, True)
 
-    # 3.18–6.38: identity compiler — half-time pulse leaves room to read.
-    rhythm(3.18, 6.38, 104, .32, .018)
-    for index, at in enumerate(np.arange(3.42, 6.2, .58)):
+    # 3.00–6.15: identity compiler — half-time pulse leaves room to read.
+    rhythm(3.0, 6.15, 104, .32, .018)
+    for index, at in enumerate(np.arange(3.24, 6.0, .58)):
         add_noise(track, float(at), .055, .055, 38, pan=(-.5 if index % 2 else .5), seed=4100 + index)
 
-    # 6.38–10.88: early-run movement finds a steady groove.
-    rhythm(6.38, 10.88, 140, .56, .055)
+    # 6.15–10.50: early-run movement finds a steady groove.
+    rhythm(6.15, 10.5, 140, .56, .055)
 
-    # 10.88–13.88: the upgrade decision lands, then briefly suspends time.
+    # 10.50–13.65: the patron roster opens and one readable boon lands.
     for frequency, pan in [(73.42, -.35), (110.0, 0), (146.83, .35)]:
-        add_tone(track, 10.88, 2.75, frequency, .09, 1.0, pan=pan, harmonics=(1, .28, .08))
-    for at in [11.35, 12.25, 13.15]:
+        add_tone(track, 10.5, 2.95, frequency, .09, 1.0, pan=pan, harmonics=(1, .28, .08))
+    for at in [10.95, 11.75, 12.65, 13.35]:
         add_noise(track, at, .08, .055, 34, seed=int(at * 1000))
 
-    # 13.88–17.55: the horde closes in fast, then the forge interrupts the
-    # encirclement before enemies overlap the stationary player.
-    rhythm(13.88, 17.45, 116, .43, .022)
-    for index, at in enumerate(np.arange(15.45, 17.5, .42)):
+    # 13.65–17.80: staggered packs cut across the escape route while the
+    # player keeps moving, then the forge interrupts the final collision.
+    rhythm(13.65, 17.7, 120, .43, .022)
+    for index, at in enumerate(np.arange(15.2, 17.72, .42)):
         add_kick(track, float(at), .46 + index * .035)
         add_noise(track, float(at), .13, .06 + index * .009, 20,
                   pan=(-.38 if index % 2 else .38), seed=4700 + index)
-    add_riser(track, 16.25, 1.3, .2, 480)
+    add_riser(track, 16.38, 1.42, .2, 480)
 
-    # 17.55–25.15: every visible character has a synchronized mechanical
+    # 17.80–25.15: every visible character has a synchronized mechanical
     # keypress; punctuation lands with a slightly heavier confirmation click.
     wish_text = "八颗幼星主动追猎，贯穿折返，沿途孵化雷暴。"
-    typing_start = 18.18
-    typing_duration = 3.25
+    typing_start = 18.32
+    typing_duration = 3.45
     for index, character in enumerate(wish_text):
         at = typing_start + index / len(wish_text) * typing_duration
         add_keypress(track, at, index, character in "，。；！？")
-    add_tone(track, 17.55, 4.75, 110.0, .045, .48, harmonics=(1, .25, .08))
-    add_riser(track, 21.35, 1.13, .18, 601)
+    add_tone(track, 17.8, 4.9, 110.0, .045, .48, harmonics=(1, .25, .08))
+    add_riser(track, 21.52, 1.18, .18, 601)
     for frequency, pan in [(98.0, -.3), (146.83, .1), (196.0, .35)]:
-        add_tone(track, 22.48, 2.42, frequency, .12, 1.7, pan=pan, harmonics=(1, .3, .1))
+        add_tone(track, 22.7, 2.2, frequency, .12, 1.7, pan=pan, harmonics=(1, .3, .1))
 
     # 25.15–31.05: the full drop pays off the generated weapon's comeback.
     rhythm(25.15, 31.05, 158, .86, .11, True)
@@ -227,9 +227,9 @@ def build_soundtrack(path: Path) -> None:
     add_tone(track, 42.0, 3.72, 49.0, .09, .38, pan=.2, harmonics=(1, .52, .24))
 
     # Each visual chapter lands on a distinct impact; the last one opens the CTA.
-    cut_points = [3.18, 6.38, 10.88, 13.88, 16.25, 17.55, 22.48, 25.15, 31.05, 34.35, 38.15, 42.0, 46.0]
+    cut_points = [3.0, 6.15, 10.5, 11.75, 13.65, 16.25, 17.8, 22.7, 25.15, 31.05, 34.35, 38.15, 42.0, 46.0]
     for number, at in enumerate(cut_points):
-        if at not in (22.48,):
+        if at not in (22.7,):
             add_riser(track, max(0, at - .34), .34, .115 if at < 21 else .16, 800 + number)
         add_tone(track, at, .92, 39 if at < 29 else 31, .48 if at < 29 else .72,
                  5.4, harmonics=(1, .5, .25))
@@ -276,6 +276,10 @@ def record_gameplay() -> Path:
                         "--disable-background-timer-throttling",
                         "--disable-renderer-backgrounding",
                         "--disable-backgrounding-occluded-windows",
+                        "--use-angle=d3d11",
+                        "--enable-gpu-rasterization",
+                        "--enable-zero-copy",
+                        "--ignore-gpu-blocklist",
                     ],
                 )
                 context = browser.new_context(
@@ -297,6 +301,19 @@ def record_gameplay() -> Path:
                 bad_damage = page.locator("html").get_attribute("data-trailer-bad-damage")
                 if bad_damage:
                     raise RuntimeError(f"Non-finite combat damage during capture: {bad_damage}")
+                max_frame_gap = float(page.locator("html").get_attribute("data-trailer-max-frame-gap") or 0)
+                slow_frames = int(page.locator("html").get_attribute("data-trailer-slow-frames") or 0)
+                slowest_frames = json.loads(page.locator("html").get_attribute("data-trailer-slowest-frames") or "[]")
+                slow_frames_by_window = json.loads(page.locator("html").get_attribute("data-trailer-slow-frames-by-window") or "{}")
+                print(f"    frame audit: max gap {max_frame_gap:.1f} ms, {slow_frames} frames over 52 ms")
+                if slowest_frames:
+                    slowest = ", ".join(f"{item['at']:.2f}s/{item['gap']:.0f}ms" for item in slowest_frames)
+                    print(f"    slowest frames: {slowest}")
+                if slow_frames_by_window:
+                    windows = ", ".join(f"{window}s={count}" for window, count in slow_frames_by_window.items())
+                    print(f"    slow frames by window: {windows}")
+                if max_frame_gap > 240:
+                    raise RuntimeError(f"Capture renderer stalled for {max_frame_gap:.1f} ms")
                 page.wait_for_timeout(220)
                 context.close()
                 raw_path = Path(video.path())
@@ -310,22 +327,48 @@ def record_gameplay() -> Path:
                 server.kill()
 
 
+def detect_capture_inpoint(raw_video: Path) -> float:
+    """Find the end of the stable black warm-up after the recorder settles."""
+    ffmpeg = get_ffmpeg_exe()
+    completed = subprocess.run([
+        ffmpeg, "-hide_banner", "-nostats", "-i", str(raw_video),
+        "-vf", "blackdetect=d=0.25:pix_th=0.07:pic_th=0.85",
+        "-an", "-f", "null", os.devnull,
+    ], cwd=ROOT, text=True, capture_output=True, check=False)
+    matches = [
+        (float(start), float(end), float(duration))
+        for start, end, duration in re.findall(
+            r"black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)",
+            completed.stderr,
+        )
+    ]
+    candidates = [
+        item for item in matches
+        if item[0] <= .5 and .6 <= item[1] <= 3.0 and item[2] >= .5
+    ]
+    if not candidates:
+        raise RuntimeError("Could not locate the stable black capture warm-up")
+    start, end, duration = max(candidates, key=lambda item: item[2])
+    print(f"    capture in-point: {end:.3f}s (black warm-up {start:.3f}–{end:.3f}s)")
+    return end
+
+
 def mux_video(raw_video: Path, soundtrack: Path, destination: Path) -> None:
     ffmpeg = get_ffmpeg_exe()
+    capture_inpoint = detect_capture_inpoint(raw_video)
     command = [
-        ffmpeg, "-y", "-ss", str(CAPTURE_PREROLL), "-i", str(raw_video), "-i", str(soundtrack),
+        ffmpeg, "-y", "-ss", f"{capture_inpoint:.3f}", "-i", str(raw_video), "-i", str(soundtrack),
         "-t", str(DURATION), "-map", "0:v:0", "-map", "1:a:0",
-        # Playwright's video stream begins on the first authored frame, so no
-        # input seek is applied. Its encoder clock settles about 620 ms after
-        # the director clock; hold the opening frame for that calibrated offset
-        # so visual typing and generated keypresses land together.
         "-vf", (
-            f"tpad=start_mode=clone:start_duration={VIDEO_SYNC_DELAY}:"
-            "stop_mode=clone:stop_duration=0.68,"
-            "scale=1920:1080:flags=lanczos,fps=30"
+            "setpts=PTS-STARTPTS,"
+            f"scale=1920:1080:flags=lanczos,fps={OUTPUT_FPS}"
         ),
-        "-c:v", "libx264", "-preset", "medium", "-crf", "15",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "14",
         "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
+        "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
+        # Synthetic transients produce sizeable AAC inter-sample overshoot;
+        # the conservative pre-encode ceiling keeps the delivery master safe.
+        "-filter:a", "loudnorm=I=-16:LRA=7:TP=-4.5",
         "-c:a", "aac", "-b:a", "192k", "-ar", str(SAMPLE_RATE),
         "-movflags", "+faststart", str(destination),
     ]
