@@ -2,11 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <script>
-    if (new URLSearchParams(location.search).get("trailer") === "1") {
-      document.documentElement.classList.add("trailer-capture-boot");
-    }
-  </script>
+  <script src="trailer-boot.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#09090d">
   <meta name="description" content="用一句话创造武器，在三阶段星海远征中击败敌人的肉鸽游戏。">
@@ -91,25 +87,97 @@
         <div class="canvas-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
         <div class="screen-overlay intro-overlay" id="introOverlay">
-          <div class="intro-copy">
-            <span class="chapter">DEEP SPACE PROTOCOL / 深空远征</span>
-            <h1>把你的<span>妄想</span><br>变成武器</h1>
-            <p>展开约 9 分钟的深空远征。清除第一阶段首波、击杀首领并直面终极意识，在四个战斗节点重构新武器。</p>
-            <div class="profile-strip">
-              <div><span>历史最高</span><strong id="profileBest">00:00</strong></div>
-              <div><span>异常清除</span><strong id="profileKills">0</strong></div>
-              <div><span>武器图鉴</span><strong id="profileWeapons">0</strong></div>
-              <div><span>残响库存</span><strong id="profileEchoes">0</strong></div>
+          <div class="launch-scene" aria-hidden="true">
+            <div class="launch-stars launch-stars-far"></div>
+            <div class="launch-stars launch-stars-near"></div>
+            <div class="launch-forge">
+              <div class="launch-forge-grid"></div>
+              <i class="launch-forge-ring launch-forge-ring-outer"></i>
+              <i class="launch-forge-ring launch-forge-ring-inner"></i>
+              <div class="launch-forge-reticle"><i></i><i></i><i></i><i></i></div>
+              <svg class="launch-weapon-blueprint" viewBox="0 0 920 560" role="presentation">
+                <defs>
+                  <linearGradient id="launchWeaponFill" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#78e8f1" stop-opacity=".18"/>
+                    <stop offset=".55" stop-color="#143b48" stop-opacity=".36"/>
+                    <stop offset="1" stop-color="#ffad57" stop-opacity=".08"/>
+                  </linearGradient>
+                  <filter id="launchWeaponGlow" x="-30%" y="-60%" width="160%" height="220%">
+                    <feGaussianBlur stdDeviation="5" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <g class="launch-blueprint-axis">
+                  <path d="M86 280H840M460 52V508"/>
+                  <circle cx="460" cy="280" r="190"/><circle cx="460" cy="280" r="128"/>
+                </g>
+                <g class="launch-blueprint-dimensions">
+                  <path d="M126 151V112H792V151M126 126H792M126 118V134M792 118V134"/>
+                  <path d="M843 188H874V390H843M859 188V390M851 188H867M851 390H867"/>
+                  <text x="421" y="105">GENE LENGTH 04.88</text>
+                  <text x="880" y="300" transform="rotate(90 880 300)">ENERGY ENVELOPE 01.72</text>
+                </g>
+                <path class="launch-weapon-aura" d="M104 281L184 238 254 242 309 202 584 202 648 239 776 248 826 280 776 312 648 321 584 358 309 358 254 318 184 322Z"/>
+                <g class="launch-weapon-body" filter="url(#launchWeaponGlow)">
+                  <path class="launch-weapon-shell" d="M112 280L188 245 263 250 315 214 579 214 641 249 768 256 814 280 768 304 641 311 579 346 315 346 263 310 188 315Z"/>
+                  <path d="M112 280H258L315 237H560L625 269H796M258 280L315 323H560L625 291H796"/>
+                  <path d="M357 214L389 179H527L558 214M418 346L439 435 486 466 531 432 515 346"/>
+                  <path d="M439 435L466 389 515 382M389 214L419 256M527 214L507 256"/>
+                  <path d="M641 249L677 221 734 230 768 256M641 311L677 339 734 330 768 304"/>
+                  <circle cx="462" cy="280" r="50"/><circle cx="462" cy="280" r="29"/><circle cx="462" cy="280" r="7"/>
+                  <path d="M462 230V207M462 353V330M412 280H373M551 280H512"/>
+                </g>
+                <g class="launch-blueprint-nodes">
+                  <circle cx="188" cy="245" r="5"/><circle cx="315" cy="214" r="5"/><circle cx="462" cy="280" r="7"/><circle cx="641" cy="249" r="5"/><circle cx="768" cy="304" r="5"/><circle cx="486" cy="466" r="5"/>
+                  <path d="M188 245L132 190H76M315 214L282 164H218M641 249L687 178H786M768 304L815 351H875M486 466L538 499H626"/>
+                  <text x="76" y="180">CHASSIS / NULL</text><text x="218" y="154">VECTOR CORE</text>
+                  <text x="692" y="168">DREAM SYNAPSE</text><text x="773" y="373">OUTPUT / 98.7%</text><text x="544" y="515">WISH INTERFACE</text>
+                </g>
+              </svg>
+              <div class="launch-forge-scanline"></div>
+              <div class="launch-forge-readout launch-forge-readout-top"><span>ORIGIN WEAVER // LIVE SCHEMATIC</span><b>RH–09</b></div>
+              <div class="launch-forge-readout launch-forge-readout-bottom"><span>FORM // UNRESOLVED</span><b>WAITING FOR HUMAN INTENT</b></div>
             </div>
-            <div class="difficulty-picker" id="difficultyPicker" aria-label="难度选择">
-              <button class="active" data-difficulty="normal" type="button"><strong>标准航线</strong><span>标准敌人 · 普通收益</span></button>
-              <button data-difficulty="hate" type="button"><strong>深空航线</strong><span>敌人 +35% · 收益 +50%</span></button>
-            </div>
-            <button class="primary-button" id="startButton">
-              <span id="startButtonLabel">开始游戏</span><kbd>ENTER</kbd>
-            </button>
-            <div class="controls-line"><span>开始后选择或自定义流派</span><span>SPACE 专属技能</span><span>自动攻击</span></div>
           </div>
+
+          <div class="launch-wordmark" aria-label="ROUGE HATE">
+            <span class="launch-wordmark-mark" aria-hidden="true"><i></i></span>
+            <div><strong>ROUGE HATE</strong><small>COSMIC ARMORY</small></div>
+          </div>
+
+          <div class="intro-copy">
+            <span class="chapter">A VOYAGE BEYOND REASON</span>
+            <h1 class="launch-title" aria-label="ROUGE HATE">
+              <span class="launch-title-word launch-title-rouge" aria-hidden="true"><i>R</i><i class="launch-title-orbit">O</i><i>U</i><i>G</i><i>E</i></span>
+              <span class="launch-title-word launch-title-hate" aria-hidden="true"><i>H</i><i>A</i><i>T</i><i>E</i></span>
+              <b class="launch-title-index" aria-hidden="true">WEAPONIZED INTENT // RH-09</b>
+            </h1>
+
+            <div class="launch-actions">
+              <div class="difficulty-picker" id="difficultyPicker" aria-label="选择远征航线">
+                <span class="route-label">选择航线</span>
+                <button class="active" data-difficulty="normal" type="button">
+                  <i aria-hidden="true"></i><strong>标准航线</strong><span>平衡的敌群与收益</span>
+                </button>
+                <button data-difficulty="hate" type="button">
+                  <i aria-hidden="true"></i><strong>深空航线</strong><span>敌群 +35% · 收益 +50%</span>
+                </button>
+              </div>
+              <button class="primary-button" id="startButton">
+                <span id="startButtonLabel">开始远征</span><kbd>ENTER</kbd>
+              </button>
+            </div>
+          </div>
+
+          <div class="profile-strip" aria-label="航行记录">
+            <span class="profile-strip-label">航行记录</span>
+            <div><span>最远航程</span><strong id="profileBest">00:00</strong></div>
+            <div><span>清除</span><strong id="profileKills">0</strong></div>
+            <div><span>武器</span><strong id="profileWeapons">0</strong></div>
+            <div><span>残响</span><strong id="profileEchoes">0</strong></div>
+          </div>
+
+          <div class="controls-line"><span>WASD 移动</span><span>SPACE 专属技能</span><span>自动攻击</span></div>
         </div>
 
         <div class="pause-card" id="pauseCard" hidden>
@@ -190,7 +258,7 @@
   <div class="modal-backdrop" id="upgradeModal" hidden>
     <section class="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
       <header>
-        <span class="chapter">LEVEL UP / 遗物与赐福</span>
+        <span class="chapter" id="upgradeChapter">LEVEL UP / 遗物与赐福</span>
         <h2 id="upgradeTitle">选择一项强化</h2>
         <p id="upgradeSubtitle">110 件手工规则化的遗物与赐福；一局只会结识有限的赐福者，满足前置后才出现双神与传奇。</p>
       </header>
@@ -202,6 +270,8 @@
   <section class="upgrade-ceremony" id="upgradeCeremony" aria-live="polite" aria-atomic="true" hidden>
     <div class="ceremony-backdrop"></div>
     <div class="ceremony-scanlines"></div>
+    <div class="ceremony-color-flash" aria-hidden="true"></div>
+    <div class="ceremony-impact" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="ceremony-orbit ceremony-orbit-a"></div>
     <div class="ceremony-orbit ceremony-orbit-b"></div>
     <div class="ceremony-particles" id="ceremonyParticles" aria-hidden="true"></div>

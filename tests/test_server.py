@@ -188,7 +188,7 @@ class WeaponCompilerTests(unittest.TestCase):
         self.assertEqual(context["forge_tier"], 1)
         self.assertEqual(context["target_power_budget"], 72.0)
 
-    def test_mutation_schema_and_offline_compiler_return_three_choices(self):
+    def test_mutation_schema_and_offline_compiler_return_one_choice(self):
         self.assertFalse(server.MUTATION_SCHEMA["additionalProperties"])
         self.assertEqual(
             set(server.MUTATION_SCHEMA["properties"]),
@@ -196,9 +196,8 @@ class WeaponCompilerTests(unittest.TestCase):
         )
         weapons = [server.rebalance_weapon(server.offline_weapon("星尘步枪", 2), 2, 1)[0]]
         raw = server.offline_mutations(weapons, ["ballistic", "precision"], 1, "让攻击像活着的星鱼一样追猎")
-        choices = server.sanitize_mutation_choices(raw, weapons, 1)
-        self.assertEqual(len(choices), 3)
-        self.assertEqual(len({json.dumps(choice["effects"], sort_keys=True) for choice in choices}), 3)
+        choices = server.sanitize_mutation_choices(raw, weapons, 1, "让攻击像活着的星鱼一样追猎")
+        self.assertEqual(len(choices), 1)
         for choice in choices:
             self.assertEqual(choice["target_index"], 0)
             self.assertTrue(choice["effects"])
@@ -216,19 +215,62 @@ class WeaponCompilerTests(unittest.TestCase):
         }
         raw = {"choices": [{
             "target_index": 4,
-            "evolution_name": f"自由造物{i}",
-            "title": f"玩家想法变体{i}",
-            "description": f"第{i}种完全由 AI 写出的攻击行为",
-            "effects": [{**rule, "count": i + 1}],
-            "accent_color": "not-a-color" if i == 0 else "#123abc",
+            "evolution_name": "自由造物",
+            "title": "玩家想法变体",
+            "description": "完全由 AI 写出的攻击行为",
+            "effects": [{**rule, "count": 4}],
+            "accent_color": "not-a-color",
             "tradeoff": "none", "tradeoff_text": "由 AI 决定", "tags": ["测试"],
-        } for i in range(3)]}
+        }]}
         choices = server.sanitize_mutation_choices(raw, weapons, 2)
         self.assertTrue(all(choice["accent_color"].startswith("#") for choice in choices))
         self.assertTrue(all(choice["mutation_round"] == 2 for choice in choices))
-        self.assertEqual([choice["title"] for choice in choices], [f"玩家想法变体{i}" for i in range(3)])
-        self.assertEqual([choice["effects"][0]["count"] for choice in choices], [1, 2, 3])
+        self.assertEqual(choices[0]["title"], "玩家想法变体")
+        self.assertEqual(choices[0]["effects"][0]["count"], 4)
         self.assertTrue(all(choice["target_index"] == 4 for choice in choices))
+
+    def test_three_shot_burst_is_enforced_as_two_runtime_repeats(self):
+        weapons = [{"name": "寂静步枪", "delivery": "projectile", "mutations": []}]
+        raw = server.offline_mutations(weapons, [], 1, "把当前武器改成三连射")
+        choice = server.sanitize_mutation_choices(raw, weapons, 1, "把当前武器改成三连射")[0]
+        repeats = [
+            rule for rule in choice["effects"]
+            if rule["trigger"] == "on_attack" and rule["action"] == "repeat_attack"
+        ]
+        self.assertEqual(len(repeats), 1)
+        self.assertEqual(repeats[0]["count"], 2)
+        self.assertEqual(repeats[0]["chance"], 1)
+        self.assertEqual(server.requested_burst_shots("连射三发"), 3)
+
+    def test_mutation_recommendation_uses_live_combat_pressure(self):
+        combat = server.sanitize_combat_state({"boss_active": True, "enemy_count": 8})
+        wish = server.recommended_mutation_wish(
+            combat, [{"name": "星轨枪", "delivery": "projectile", "mutations": []}], ["precision"], 1,
+        )
+        self.assertIn("星轨枪", wish)
+        self.assertIn("三连射", wish)
+
+    def test_mutation_recommendation_does_not_repeat_existing_behavior(self):
+        combat = server.sanitize_combat_state({"boss_active": True, "enemy_count": 2})
+        wish = server.recommended_mutation_wish(
+            combat,
+            [{
+                "name": "脉冲器",
+                "delivery": "projectile",
+                "mutations": [{"effects": [{"action": "repeat_attack"}]}],
+            }],
+            ["precision"],
+            2,
+        )
+        self.assertNotIn("三连射", wish)
+
+    def test_offline_recommendation_compiles_to_matching_visible_behavior(self):
+        weapons = [{"name": "星轨枪", "delivery": "projectile", "mutations": []}]
+        wish = "让星轨枪命中后折返并追击另一名敌人"
+        raw = server.offline_mutations(weapons, [], 2, wish)
+        choice = server.sanitize_mutation_choices(raw, weapons, 2, wish)[0]
+        self.assertEqual(choice["title"], "折返追击")
+        self.assertEqual(choice["effects"][0]["action"], "chain")
 
     def test_mutation_openai_context_exposes_composable_effect_language_without_catalogue(self):
         weapons = [{

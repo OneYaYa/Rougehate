@@ -76,7 +76,7 @@ class BrowserGameContractTests(unittest.TestCase):
     def test_generated_weapon_has_looping_preview_and_rebuild_choice(self):
         self.assertIn('id="resultPreviewTime"', INDEX)
         self.assertIn('id="reforgeButton"', INDEX)
-        self.assertIn("function drawWeaponPreviewFrame(weapon, elapsed)", GAME)
+        self.assertIn("function drawWeaponPreviewFrame(weapon, elapsed, preview = ui.resultWeaponCanvas)", GAME)
         self.assertIn("% 5000", GAME)
         self.assertIn("function rejectWeaponAndReforge()", GAME)
         self.assertIn(".weapon-preview-video", STYLES)
@@ -87,6 +87,25 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn('generateWeapon("", { recommend: true })', GAME)
         self.assertIn("combatState: forgeCombatSnapshot()", GAME)
         self.assertIn(".recommend-button", STYLES)
+
+    def test_weapon_dream_returns_one_recommended_previewed_result(self):
+        self.assertIn('textarea.placeholder = "对当前武器进行改造。"', GAME)
+        self.assertIn('generateMutations("", { recommend: true })', GAME)
+        self.assertIn("dataset.mutationRecommend", GAME)
+        self.assertIn("data.choices.slice(0, 1)", GAME)
+        self.assertIn("function startMutationPreview(choice, preview, timeLabel, progressFill)", GAME)
+        self.assertIn("function mutationPreviewWeapon(choice)", GAME)
+        self.assertIn("mutation-hammer-vfx", GAME)
+        self.assertIn("audio.hammerStrike(\"precision\")", GAME)
+        self.assertIn("dataset.mutationRetry", GAME)
+        self.assertIn(".single-mutation-mode .upgrade-options", STYLES)
+
+    def test_three_shot_mutation_and_slower_upgrade_curve_are_runtime_features(self):
+        self.assertIn('rule.action === "repeat_attack"', GAME)
+        self.assertIn("const shotCount = 1 + repeatCount", GAME)
+        self.assertIn("const INITIAL_XP_NEED = 24", GAME)
+        self.assertIn("Math.pow(state.level, 1.34) * 8", GAME)
+        self.assertIn("const MUTATION_UPGRADE_INTERVAL = 4", GAME)
 
     def test_orbit_release_homing_is_distinct_from_fixed_orbit(self):
         self.assertIn("function orbitLaunchPoint(weapon, index, count)", GAME)
@@ -137,7 +156,7 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn('type: "patron"', GAME)
         self.assertIn('type: "relic"', GAME)
         self.assertIn('type: "ai"', GAME)
-        self.assertIn("audio.boon(patronId)", GAME)
+        self.assertIn("audio.patronArrival(patronId)", GAME)
         self.assertIn("audio.relic(profileId)", GAME)
         self.assertIn("audio.mutation()", GAME)
         self.assertIn(".ceremony-patron", STYLES)
@@ -152,6 +171,19 @@ class BrowserGameContractTests(unittest.TestCase):
         self.assertIn("drawWeaponModel(blueprintCtx, weapon", GAME)
         self.assertIn("SCAN</span><span>DECOMPOSE</span><span>LOCK", INDEX)
         self.assertIn("weapon: previewWeapon", GAME)
+
+    def test_patron_arrival_precedes_three_same_patron_choices(self):
+        self.assertIn("async function playPatronArrival(patronId, choices)", GAME)
+        self.assertIn("audio.patronArrival(patronId)", GAME)
+        self.assertIn("hammerStrike(patronId", GAME)
+        self.assertIn("function availablePatronUpgrades(patronId", GAME)
+        self.assertIn("choices.length < 3", GAME)
+        self.assertIn("currentUpgradePatron = encounter.patronId", GAME)
+        self.assertIn("await playPatronArrival(currentUpgradePatron, currentUpgradeChoices)", GAME)
+        self.assertIn("availableUpgrades(state.rewardType === \"artifact\", currentUpgradePatron)", GAME)
+        self.assertIn(".ceremony-color-flash", STYLES)
+        self.assertIn("boon-impact-ring", STYLES)
+        self.assertIn("boon-card-deal", STYLES)
 
     def test_all_seven_patrons_have_original_portrait_assets(self):
         portrait_names = (

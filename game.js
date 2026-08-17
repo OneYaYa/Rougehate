@@ -85,6 +85,7 @@ const ui = {
   profileWeapons: $("#profileWeapons"),
   difficultyPicker: $("#difficultyPicker"),
   upgrade: $("#upgradeModal"),
+  upgradeChapter: $("#upgradeChapter"),
   upgradeTitle: $("#upgradeTitle"),
   upgradeSubtitle: $("#upgradeSubtitle"),
   upgradeOptions: $("#upgradeOptions"),
@@ -140,6 +141,8 @@ const visualMeta = {
 
 const STAGE_DURATION = 180;
 const RUN_DURATION = STAGE_DURATION * 3;
+const INITIAL_XP_NEED = 24;
+const MUTATION_UPGRADE_INTERVAL = 4;
 const BOSS_TIMES = [160, 340, 520];
 const stages = [
   { label: "星域 I · 坠入边境", color: "#58e6ff" },
@@ -518,6 +521,54 @@ class SynthAudio {
     }, 90 + index * 92));
   }
 
+  hammerStrike(patronId = "precision") {
+    if (!this.enabled) return;
+    this.wake();
+    if (!this.context || !this.master) return;
+    const now = this.context.currentTime;
+    const roots = { ballistic: 112, blaze: 92, cryo: 126, toxin: 78, storm: 66, gravity: 48, precision: 138 };
+    const root = roots[patronId] || roots.precision;
+
+    const sampleCount = Math.floor(this.context.sampleRate * .16);
+    const buffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < sampleCount; index += 1) {
+      const decay = Math.pow(1 - index / sampleCount, 4.8);
+      data[index] = (Math.random() * 2 - 1) * decay;
+    }
+    const impact = this.context.createBufferSource();
+    const impactFilter = this.context.createBiquadFilter();
+    const impactGain = this.context.createGain();
+    impact.buffer = buffer;
+    impactFilter.type = "bandpass";
+    impactFilter.frequency.value = 680;
+    impactFilter.Q.value = .72;
+    impactGain.gain.setValueAtTime(.13, now);
+    impactGain.gain.exponentialRampToValueAtTime(.0001, now + .16);
+    impact.connect(impactFilter).connect(impactGain).connect(this.master);
+    impact.start(now);
+
+    [1, 2.74, 4.18, 6.63].forEach((ratio, index) => {
+      const oscillator = this.context.createOscillator();
+      const gain = this.context.createGain();
+      oscillator.type = index === 0 ? "triangle" : "sine";
+      oscillator.frequency.setValueAtTime(root * ratio, now);
+      oscillator.frequency.exponentialRampToValueAtTime(Math.max(32, root * ratio * .965), now + .72);
+      gain.gain.setValueAtTime(index === 0 ? .055 : .034 / index, now);
+      gain.gain.exponentialRampToValueAtTime(.0001, now + .5 + index * .13);
+      oscillator.connect(gain).connect(this.master);
+      oscillator.start(now);
+      oscillator.stop(now + .95);
+    });
+    this.tone(root * .46, .22, "sine", .06, -24);
+  }
+
+  patronArrival(patronId) {
+    this.hammerStrike(patronId);
+    setTimeout(() => this.boon(patronId), 105);
+    setTimeout(() => this.hammerStrike(patronId), 310);
+  }
+
   mutation() {
     this.pad(46, 1.15, .014, "sawtooth", -12);
     [[118, 0], [236, 54], [472, 108], [944, 174]].forEach(([frequency, delay], index) => setTimeout(() => {
@@ -578,6 +629,8 @@ let previewWeapon = null;
 let loadingTimer = null;
 let weaponPreviewFrame = 0;
 let weaponPreviewStartedAt = 0;
+let mutationPreviewFrame = 0;
+let mutationPreviewStartedAt = 0;
 
 const sessionId = (() => {
   const stored = localStorage.getItem("rougehate-session");
@@ -595,7 +648,7 @@ const state = {
   kills: 0,
   level: 1,
   xp: 0,
-  xpNeed: 18,
+  xpNeed: INITIAL_XP_NEED,
   spawnClock: 0,
   wave: 0,
   difficulty: "normal",
@@ -655,6 +708,7 @@ let enemyProjectiles = [];
 let pendingAttacks = [];
 let currentBoss = null;
 let currentUpgradeChoices = [];
+let currentUpgradePatron = null;
 let currentMutationChoices = [];
 let currentMutationWish = "";
 let synergyCache = null;
@@ -1248,7 +1302,7 @@ function resetGame() {
   state.kills = 0;
   state.level = 1;
   state.xp = 0;
-  state.xpNeed = 18;
+  state.xpNeed = INITIAL_XP_NEED;
   state.spawnClock = 0;
   state.wave = 0;
   state.difficulty = selectedDifficulty;
@@ -1312,6 +1366,7 @@ function resetGame() {
   invalidateSynergies();
   currentBoss = null;
   currentUpgradeChoices = [];
+  currentUpgradePatron = null;
   currentMutationChoices = [];
   currentMutationWish = "";
   ceremonyRunning = false;
@@ -3077,7 +3132,7 @@ function gainXp(amount) {
   while (state.xp >= state.xpNeed) {
     state.xp -= state.xpNeed;
     state.level += 1;
-    state.xpNeed = Math.floor(18 + Math.pow(state.level, 1.34) * 7);
+    state.xpNeed = Math.floor(22 + Math.pow(state.level, 1.34) * 8);
     queueReward("upgrade");
   }
   updateHUD();
@@ -5408,10 +5463,13 @@ function openNextReward() {
 
 function closeReward() {
   stopWeaponPreview();
+  stopMutationPreview();
   state.forging = false;
   state.rewardOpen = false;
   ui.forge.hidden = true;
   ui.upgrade.hidden = true;
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode", "mutation-hammering");
+  currentUpgradePatron = null;
   if (state.rewardQueue.length > 0) {
     setTimeout(openNextReward, 80);
   } else {
@@ -5573,10 +5631,11 @@ function renderAICeremonyBlueprint(weapon, mode = "mutation") {
   ui.ceremonyAiCode.textContent = `${mode === "forge" ? "COMPILE" : "EVOLVE"} // GENE ${String(variant).padStart(2, "0")}`;
 }
 
-async function showCeremony({ type, profile, seed, kicker, title, subtitle, sigil, patron = null, partner = null, weapon = null, aiMode = "mutation", duration = 1050 }) {
+async function showCeremony({ type, profile, seed, kicker, title, subtitle, sigil, patron = null, partner = null, weapon = null, aiMode = "mutation", rarity = null, onReveal = null, duration = 1050 }) {
   if (!ui.ceremony) return;
   ui.ceremony.className = `upgrade-ceremony ceremony-${type} effect-${profile.effect}`;
   if (partner) ui.ceremony.classList.add("ceremony-duo");
+  if (rarity) ui.ceremony.classList.add(`draw-${rarity}`);
   ui.ceremony.style.setProperty("--ceremony-color", profile.color);
   ui.ceremony.style.setProperty("--ceremony-accent", profile.accent);
   ui.ceremonyKicker.textContent = kicker;
@@ -5592,7 +5651,14 @@ async function showCeremony({ type, profile, seed, kicker, title, subtitle, sigi
   ui.upgrade.classList.add("ceremony-obscured");
   ui.forge.classList.add("ceremony-obscured");
   ui.ceremony.hidden = false;
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  if (patron && ui.ceremonyPortrait.decode) {
+    await Promise.race([ui.ceremonyPortrait.decode().catch(() => {}), waitForCeremony(220)]);
+  }
+  await Promise.race([
+    new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    waitForCeremony(80),
+  ]);
+  if (onReveal) onReveal();
   ui.ceremony.classList.add("active");
   await waitForCeremony(duration);
   ui.ceremony.classList.add("leaving");
@@ -5603,24 +5669,32 @@ async function showCeremony({ type, profile, seed, kicker, title, subtitle, sigi
   ui.forge.classList.remove("ceremony-obscured");
 }
 
+async function playPatronArrival(patronId, choices) {
+  const patron = patronDefinitions[patronId];
+  const profile = ceremonyProfiles[patronId];
+  if (!patron || !profile) return;
+  const family = upgradeFamilyBlueprints.find((item) => item.id === patronId);
+  const rarityOrder = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  const revealRarity = choices.reduce((best, choice) => rarityOrder[choice.rarity] > rarityOrder[best] ? choice.rarity : best, "common");
+  await showCeremony({
+    type: "patron", profile, seed: `${patronId}-${state.level}-${state.upgradePicks}`,
+    kicker: "ASTRAL PATRON ARRIVES / 星神降临",
+    title: patron.name,
+    subtitle: `“${patron.epithet}。” · 三份祝福已经显形，选择其一。`,
+    sigil: family?.icon || profile.sigil,
+    patron,
+    rarity: revealRarity,
+    onReveal: () => audio.patronArrival(patronId),
+    duration: choices.some((choice) => ["epic", "legendary"].includes(choice.rarity)) ? 1680 : 1480,
+  });
+}
+
 async function playUpgradeCeremony(upgrade) {
   const profileId = ceremonyProfileIdForUpgrade(upgrade);
   const profile = ceremonyProfiles[profileId];
   const patronId = patronIdForUpgrade(upgrade);
   const patron = patronDefinitions[patronId] || null;
-  const partner = patronDefinitions[upgrade.partnerPatron] || null;
-  if (patron) {
-    audio.boon(patronId);
-    if (partner) setTimeout(() => audio.boon(upgrade.partnerPatron), 155);
-    await showCeremony({
-      type: "patron", profile, seed: upgrade.id,
-      kicker: partner ? `DUO BOON / ${patron.name} × ${partner.name}` : `PATRON BOON / ${patron.name}`,
-      title: upgrade.title,
-      subtitle: `“${patron.epithet}。” · ${rarityMeta[upgrade.rarity].label}`,
-      sigil: upgrade.icon, patron, partner, duration: partner ? 1580 : 1320,
-    });
-    return;
-  }
+  if (patron) return;
   audio.relic(profileId);
   await showCeremony({
     type: "relic", profile, seed: upgrade.id,
@@ -5651,7 +5725,9 @@ function ownedBuildTags() {
   }
   for (const weapon of weapons) {
     for (const tag of weapon.tags || []) tags.add(String(tag));
-    for (const mutation of weapon.mutations || []) tags.add(mutation.mechanic);
+    for (const mutation of weapon.mutations || []) {
+      if (mutation.mechanic) tags.add(String(mutation.mechanic));
+    }
   }
   return [...tags];
 }
@@ -5693,32 +5769,87 @@ function makePomChoice(upgrade) {
   };
 }
 
-function availableUpgrades(artifact = false) {
-  let pool = upgrades.filter((upgrade) => (upgradeLevels[upgrade.id] || 0) === 0
-    && (!upgrade.requires || upgrade.requires()) && patronAllowed(upgrade));
-  if (artifact) {
-    const bossPool = pool.filter((upgrade) => ["epic", "legendary"].includes(upgrade.rarity)
-      || upgrade.offerType === "duo" || upgrade.tier === 6);
-    if (bossPool.length >= 3) pool = bossPool;
-  }
-  const ownedTags = new Set(ownedBuildTags());
-  const choices = [];
-  const pomCandidates = upgrades.filter((upgrade) => {
+function upgradeBelongsToPatron(upgrade, patronId) {
+  const inherentPatron = patronIdForUpgrade(upgrade);
+  return inherentPatron === patronId || (!inherentPatron && tagsForUpgrade(upgrade).includes(patronId));
+}
+
+function asPatronBoon(upgrade, patronId) {
+  if (patronIdForUpgrade(upgrade) === patronId) return upgrade;
+  const patron = patronDefinitions[patronId];
+  return {
+    ...upgrade,
+    patron: patronId,
+    offerType: "boon",
+    family: `星神祝福 · ${patron?.name || patronId}`,
+  };
+}
+
+function preferArtifactPool(pool, artifact) {
+  if (!artifact) return pool;
+  const bossPool = pool.filter((upgrade) => ["epic", "legendary"].includes(upgrade.rarity)
+    || upgrade.offerType === "duo" || upgrade.tier === 6);
+  return bossPool.length >= 3 ? bossPool : pool;
+}
+
+function patronOfferPool(patronId) {
+  return upgrades.filter((upgrade) => upgradeBelongsToPatron(upgrade, patronId)
+    && (!upgrade.requires || upgrade.requires()));
+}
+
+function patronCanOfferThree(patronId) {
+  if (!state.activePatrons.has(patronId) && state.activePatrons.size >= PATRON_LIMIT) return false;
+  return patronOfferPool(patronId).filter((upgrade) => {
     const level = upgradeLevels[upgrade.id] || 0;
-    return level > 0 && level < upgrade.max && patronAllowed(upgrade);
+    return level === 0 || level < upgrade.max;
+  }).length >= 3;
+}
+
+function availablePatronUpgrades(patronId, artifact = false) {
+  const ownedTags = new Set(ownedBuildTags());
+  const completePool = patronOfferPool(patronId);
+  let pool = preferArtifactPool(completePool.filter((upgrade) => (upgradeLevels[upgrade.id] || 0) === 0), artifact);
+  const choices = [];
+  const pomCandidates = completePool.filter((upgrade) => {
+    const level = upgradeLevels[upgrade.id] || 0;
+    return level > 0 && level < upgrade.max;
   });
   const pomDue = !artifact && pomCandidates.length > 0 && state.upgradePicks > 0 && state.upgradePicks % 4 === 3;
   if (pomDue) {
     const base = weightedUpgrade(pomCandidates, ownedTags, false);
-    if (base) choices.push(makePomChoice(base));
+    if (base) choices.push(makePomChoice(asPatronBoon(base, patronId)));
   }
+  while (choices.length < 3 && pool.length) {
+    const chosenBaseIds = new Set(choices.map((choice) => choice.baseId || choice.id));
+    pool = pool.filter((upgrade) => !chosenBaseIds.has(upgrade.id));
+    const next = weightedUpgrade(pool, ownedTags, artifact);
+    if (!next) break;
+    choices.push(asPatronBoon(next, patronId));
+  }
+  let deepenPool = pomCandidates.filter((upgrade) => !choices.some((choice) => (choice.baseId || choice.id) === upgrade.id));
+  while (choices.length < 3 && deepenPool.length) {
+    const next = weightedUpgrade(deepenPool, ownedTags, artifact);
+    if (!next) break;
+    choices.push(makePomChoice(asPatronBoon(next, patronId)));
+    deepenPool = deepenPool.filter((upgrade) => upgrade !== next);
+  }
+  return choices;
+}
+
+function availableRelicUpgrades(artifact = false) {
+  let pool = upgrades.filter((upgrade) => !patronIdForUpgrade(upgrade)
+    && (upgradeLevels[upgrade.id] || 0) === 0 && (!upgrade.requires || upgrade.requires()));
+  pool = preferArtifactPool(pool, artifact);
+  const ownedTags = new Set(ownedBuildTags());
+  const choices = [];
   const affinityPool = pool.filter((upgrade) => tagsForUpgrade(upgrade).some((tag) => ownedTags.has(tag)));
   if (affinityPool.length && ownedTags.size) {
     const affinity = weightedUpgrade(affinityPool, ownedTags, artifact);
     if (affinity) choices.push(affinity);
   }
   while (choices.length < 3 && pool.length) {
-    pool = pool.filter((upgrade) => !choices.includes(upgrade));
+    const chosenIds = new Set(choices.map((choice) => choice.id));
+    pool = pool.filter((upgrade) => !chosenIds.has(upgrade.id));
     const next = weightedUpgrade(pool, ownedTags, artifact);
     if (!next) break;
     choices.push(next);
@@ -5726,49 +5857,106 @@ function availableUpgrades(artifact = false) {
   return choices;
 }
 
-function openUpgrade(type = "upgrade") {
+function availableUpgrades(artifact = false, patronId = null) {
+  return patronId ? availablePatronUpgrades(patronId, artifact) : availableRelicUpgrades(artifact);
+}
+
+function rollUpgradeEncounter(artifact = false) {
+  const ownedTags = new Set(ownedBuildTags());
+  let seedPool = upgrades.filter((upgrade) => (upgradeLevels[upgrade.id] || 0) === 0
+    && (!upgrade.requires || upgrade.requires()) && patronAllowed(upgrade));
+  seedPool = seedPool.filter((upgrade) => {
+    const patronId = patronIdForUpgrade(upgrade);
+    return !patronId || patronCanOfferThree(patronId);
+  });
+  seedPool = preferArtifactPool(seedPool, artifact);
+  const seed = weightedUpgrade(seedPool, ownedTags, artifact);
+  const patronId = patronIdForUpgrade(seed || {});
+  let choices = availableUpgrades(artifact, patronId);
+
+  if (choices.length < 3) {
+    const fallbackPatrons = Object.keys(patronDefinitions).filter(patronCanOfferThree);
+    const fallbackPatron = fallbackPatrons[Math.floor(Math.random() * fallbackPatrons.length)] || null;
+    const patronChoices = fallbackPatron ? availablePatronUpgrades(fallbackPatron, artifact) : [];
+    if (patronChoices.length >= 3) return { patronId: fallbackPatron, choices: patronChoices };
+    choices = availableRelicUpgrades(artifact);
+    return { patronId: null, choices };
+  }
+  return { patronId: patronId || null, choices };
+}
+
+async function openUpgrade(type = "upgrade") {
   state.paused = true;
   state.rewardOpen = true;
   state.forging = false;
-  ui.upgrade.hidden = false;
-  ui.upgradeTitle.textContent = type === "artifact" ? "从尸体里拿走一样东西" : "选择一件遗物或一份赐福";
-  ui.upgradeSubtitle.textContent = type === "artifact"
-    ? "Boss 遗物池更危险，也更容易出现史诗、传奇与已经满足前置的双神祝福。"
-    : `牌库 ${upgrades.length} 件 · 本局赐福者 ${state.activePatrons.size}/${PATRON_LIMIT} · 每第 3 次升级进入武器异梦`;
-  currentUpgradeChoices = availableUpgrades(type === "artifact");
+  ui.upgrade.hidden = true;
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode", "mutation-hammering");
+  const encounter = rollUpgradeEncounter(type === "artifact");
+  currentUpgradePatron = encounter.patronId;
+  currentUpgradeChoices = encounter.choices;
+
+  if (currentUpgradePatron) {
+    const patron = patronDefinitions[currentUpgradePatron];
+    ui.upgrade.classList.add("patron-offer");
+    ui.upgrade.style.setProperty("--offer-color", patron.color);
+    ui.upgrade.style.setProperty("--offer-accent", patron.accent);
+    ui.upgradeChapter.textContent = `ASTRAL BOON / ${patron.name}的祝福`;
+    ui.upgradeTitle.textContent = `${patron.name}赐下三份祝福`;
+    ui.upgradeSubtitle.textContent = `“${patron.epithet}。” · 本次三项全部来自同一位星神，选择一项带走。`;
+  } else {
+    ui.upgradeChapter.textContent = type === "artifact" ? "BOSS CACHE / 危险遗物" : "LEVEL UP / 漂流遗物";
+    ui.upgradeTitle.textContent = type === "artifact" ? "从尸体里拿走一样东西" : "选择一件漂流遗物";
+    ui.upgradeSubtitle.textContent = type === "artifact"
+      ? "Boss 遗物池更危险，也更容易出现史诗与传奇遗物。"
+      : `遗物牌库 ${upgrades.length} 件 · 本局星神 ${state.activePatrons.size}/${PATRON_LIMIT} · 每第 ${MUTATION_UPGRADE_INTERVAL} 次升级进入武器异梦`;
+  }
   renderUpgradeChoices();
-  addLog(type === "artifact" ? "Boss 的残骸里还留着能用的东西。" : `等级提升至 ${state.level}，新的东西找上了你。`, true);
+  if (currentUpgradePatron) {
+    const patron = patronDefinitions[currentUpgradePatron];
+    addLog(`${patron.name}的星光截停了时间，三份祝福正在显形。`, true);
+    ceremonyRunning = true;
+    try {
+      await playPatronArrival(currentUpgradePatron, currentUpgradeChoices);
+    } finally {
+      ceremonyRunning = false;
+    }
+    if (!state.rewardOpen || state.rewardType !== type || !state.running) return;
+  } else {
+    addLog(type === "artifact" ? "Boss 的残骸里还留着能用的东西。" : `等级提升至 ${state.level}，新的东西找上了你。`, true);
+  }
+  ui.upgrade.hidden = false;
+  requestAnimationFrame(() => ui.upgrade.classList.add("offer-revealed"));
 }
 
 function renderMutationLoading() {
+  stopMutationPreview();
   ui.upgradeOptions.replaceChildren();
-  for (let index = 0; index < 3; index += 1) {
-    const card = document.createElement("article");
-    card.className = "upgrade-card mutation-loading-card";
-    card.style.setProperty("--rarity-color", "#b8c2ce");
-    const icon = document.createElement("span");
-    icon.className = "upgrade-icon";
-    icon.textContent = "梦";
-    const label = document.createElement("span");
-    label.className = "upgrade-rarity";
-    label.textContent = "WEAPON DREAM / 武器异梦";
-    const title = document.createElement("h3");
-    title.textContent = ["武器开始做梦…", "旧伤口正在说话…", "某种形状正在孵化…"][index];
-    const description = document.createElement("p");
-    description.textContent = currentMutationWish
-      ? `正在回应「${currentMutationWish.slice(0, 28)}」。`
-      : "异梦会改变攻击方式，但不会凭空多出一件武器。";
-    card.append(icon, label, title, description);
-    ui.upgradeOptions.append(card);
-  }
+  const card = document.createElement("article");
+  card.className = "upgrade-card mutation-loading-card";
+  card.style.setProperty("--rarity-color", "#b8c2ce");
+  const icon = document.createElement("span");
+  icon.className = "upgrade-icon";
+  icon.textContent = "梦";
+  const label = document.createElement("span");
+  label.className = "upgrade-rarity";
+  label.textContent = "WEAPON DREAM / 武器异梦";
+  const title = document.createElement("h3");
+  title.textContent = "正在锻造唯一结果…";
+  const description = document.createElement("p");
+  description.textContent = currentMutationWish
+    ? `正在回应「${currentMutationWish.slice(0, 42)}」。`
+    : "AI 正在读取战况并决定当前最需要的攻击变化。";
+  card.append(icon, label, title, description);
+  ui.upgradeOptions.append(card);
 }
 
 function renderMutationWishForm(round = state.mutationRound || 1) {
+  stopMutationPreview();
   currentMutationChoices = [];
   ui.upgradeOptions.replaceChildren();
   ui.upgradeTitle.textContent = `武器异梦 · 第 ${round} 夜`;
-  ui.upgradeSubtitle.textContent = "写下你希望本轮武器特效如何进化，异梦会把它编译成三种攻击形态。";
-  ui.upgradeRerolls.textContent = "输入愿望后生成异变";
+  ui.upgradeSubtitle.textContent = "描述一次明确的攻击变化，AI 只生成一个可以直接执行的改造结果。";
+  ui.upgradeRerolls.textContent = "生成后可刷新结果";
   ui.reroll.disabled = true;
 
   const panel = document.createElement("article");
@@ -5802,7 +5990,7 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
   textarea.rows = 3;
   textarea.required = true;
   textarea.dataset.mutationWishInput = "true";
-  textarea.placeholder = "直接描述你想要的攻击变化；没有模板，也不需要套用关键词。";
+  textarea.placeholder = "对当前武器进行改造。";
   const count = document.createElement("span");
   count.className = "char-count";
   const countValue = document.createElement("b");
@@ -5812,11 +6000,22 @@ function renderMutationWishForm(round = state.mutationRound || 1) {
   frame.append(textarea, count);
   const actions = document.createElement("div");
   actions.className = "mutation-wish-actions";
+  const recommend = document.createElement("button");
+  recommend.className = "recommend-button mutation-recommend-button";
+  recommend.type = "button";
+  recommend.dataset.mutationRecommend = "true";
+  const recommendIcon = document.createElement("span");
+  recommendIcon.textContent = "◎";
+  const recommendTitle = document.createElement("b");
+  recommendTitle.textContent = "AI 系统推荐";
+  const recommendDetail = document.createElement("small");
+  recommendDetail.textContent = "读取战况并提出一个改造方向";
+  recommend.append(recommendIcon, recommendTitle, recommendDetail);
   const submit = document.createElement("button");
   submit.className = "primary-button";
   submit.type = "submit";
   submit.textContent = "让异梦成形";
-  actions.append(submit);
+  actions.append(recommend, submit);
   form.append(frame, actions);
 
   panel.append(heading, weaponRow, form);
@@ -5829,8 +6028,11 @@ function openMutation(round = 1) {
   state.rewardOpen = true;
   state.forging = false;
   state.rewardType = "mutation";
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "mutation-hammering");
+  ui.upgrade.classList.add("single-mutation-mode");
   state.mutationRound = Math.max(state.mutationRound, round);
   ui.upgrade.hidden = false;
+  ui.upgradeChapter.textContent = "WEAPON DREAM / 武器异梦";
   ui.upgradeTitle.textContent = `武器异梦 · 第 ${round} 夜`;
   ui.upgradeSubtitle.textContent = "写下你希望本轮武器特效如何进化。";
   currentMutationChoices = [];
@@ -5839,16 +6041,18 @@ function openMutation(round = 1) {
   addLog(`第 ${round} 夜，武器把本局拾到的东西带进了梦里。`, true);
 }
 
-async function generateMutations(wish = currentMutationWish) {
+async function generateMutations(wish = currentMutationWish, { recommend = false } = {}) {
   currentMutationWish = String(wish || "").trim().slice(0, 180);
-  if (!currentMutationWish) {
+  if (!currentMutationWish && !recommend) {
     renderMutationWishForm(state.mutationRound);
     return;
   }
   currentMutationChoices = [];
   renderMutationLoading();
   ui.reroll.disabled = true;
-  ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」正在改变现有武器。`;
+  ui.upgradeSubtitle.textContent = recommend
+    ? "AI 正在读取当前战况、武器形态与构筑短板。"
+    : `愿望「${currentMutationWish}」正在改变现有武器。`;
   try {
     const response = await fetch("/api/generate-mutations", {
       method: "POST",
@@ -5856,6 +6060,8 @@ async function generateMutations(wish = currentMutationWish) {
       body: JSON.stringify({
         sessionId,
         wish: currentMutationWish,
+        recommend,
+        combatState: forgeCombatSnapshot(),
         mutationRound: state.mutationRound,
         archetype: { role: selectedArchetype?.role, trait: selectedArchetype?.trait, level: state.level },
         buildTags: ownedBuildTags(),
@@ -5867,9 +6073,11 @@ async function generateMutations(wish = currentMutationWish) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `服务器返回 ${response.status}`);
-    currentMutationChoices = Array.isArray(data.choices) ? data.choices.slice(0, 3) : [];
-    if (currentMutationChoices.length !== 3) throw new Error("异梦没有形成完整的三种结果");
+    if (recommend && data.recommendationWish) currentMutationWish = String(data.recommendationWish).slice(0, 180);
+    currentMutationChoices = Array.isArray(data.choices) ? data.choices.slice(0, 1) : [];
+    if (currentMutationChoices.length !== 1) throw new Error("异梦没有形成可执行的改造结果");
     renderMutationChoices();
+    if (recommend && data.recommendationWish) addLog(`AI 根据当前战况提出：${data.recommendationWish}。`, true);
     if (data.source !== "openai") addLog("梦境有些模糊，本次武器异梦已由本地规则接管。", true);
   } catch (error) {
     ui.upgradeOptions.replaceChildren();
@@ -5880,7 +6088,12 @@ async function generateMutations(wish = currentMutationWish) {
     title.textContent = "武器异梦暂时中断";
     const description = document.createElement("p");
     description.textContent = error instanceof Error ? error.message : "未知错误";
-    card.append(title, description);
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "primary-button mutation-retry-button";
+    retry.dataset.mutationRetry = "true";
+    retry.textContent = "返回重新改造";
+    card.append(title, description, retry);
     ui.upgradeOptions.append(card);
   } finally {
     ui.reroll.disabled = state.rerolls <= 0 || currentMutationChoices.length === 0;
@@ -5889,14 +6102,14 @@ async function generateMutations(wish = currentMutationWish) {
 }
 
 function renderMutationChoices() {
+  stopMutationPreview();
   ui.upgradeOptions.replaceChildren();
-  ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」形成了三种攻击形态，选择一个醒来后仍会存在的结果。`;
+  ui.upgradeSubtitle.textContent = `愿望「${currentMutationWish}」已经被锻造成一个攻击改造。先看实战预览，再决定是否接入。`;
   currentMutationChoices.forEach((choice, index) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "upgrade-card mutation-card";
-    card.dataset.mutationIndex = String(index);
+    const card = document.createElement("article");
+    card.className = "upgrade-card mutation-card mutation-result-card";
     card.style.setProperty("--rarity-color", "#b8c2ce");
+    card.style.setProperty("--result-color", choice.accent_color);
     const number = document.createElement("span");
     number.className = "upgrade-number";
     number.textContent = `0${index + 1}`;
@@ -5916,11 +6129,41 @@ function renderMutationChoices() {
     const evolved = document.createElement("strong");
     evolved.className = "mutation-evolved-name";
     evolved.textContent = `进化后：${choice.evolution_name}`;
-    card.append(number, icon, rarity, family, title, description, evolved);
+    const preview = document.createElement("div");
+    preview.className = "weapon-preview-video mutation-preview-video";
+    const canvas = document.createElement("canvas");
+    canvas.className = "weapon-preview";
+    canvas.width = 760;
+    canvas.height = 260;
+    canvas.setAttribute("aria-label", "AI 武器改造五秒实战视频预览");
+    const hud = document.createElement("div");
+    hud.className = "preview-video-hud";
+    const hudLabel = document.createElement("span");
+    hudLabel.textContent = "LIVE MUTATION / 5 秒实战预览";
+    const time = document.createElement("strong");
+    time.textContent = "5.0s";
+    hud.append(hudLabel, time);
+    const progress = document.createElement("div");
+    progress.className = "preview-video-progress";
+    const progressFill = document.createElement("i");
+    progress.append(progressFill);
+    const hammer = document.createElement("div");
+    hammer.className = "mutation-hammer-vfx";
+    hammer.setAttribute("aria-hidden", "true");
+    hammer.append(document.createElement("i"), document.createElement("b"), document.createElement("span"));
+    preview.append(canvas, hud, progress, hammer);
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.className = "primary-button mutation-accept-button";
+    accept.dataset.mutationIndex = String(index);
+    accept.textContent = "确认改造并接入";
+    card.append(number, icon, rarity, family, title, description, evolved, preview, accept);
     ui.upgradeOptions.append(card);
+    startMutationPreview(choice, canvas, time, progressFill);
   });
   ui.upgradeRerolls.textContent = `刷新次数 ${state.rerolls}`;
   ui.reroll.disabled = state.rerolls <= 0;
+  playMutationHammerEffect();
 }
 
 function applyAdaptiveEvolution() {
@@ -5943,9 +6186,12 @@ async function selectMutation(index) {
   const choice = currentMutationChoices[index];
   const weapon = weapons[choice?.target_index];
   if (!choice || !weapon || ceremonyRunning) return;
+  stopMutationPreview();
   ceremonyRunning = true;
   ui.upgradeOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
   try {
+    playMutationHammerEffect();
+    await waitForCeremony(380);
     weapon.mutations ||= [];
     weapon.mutations.push({
       title: choice.title, description: choice.description, color: choice.accent_color,
@@ -5990,6 +6236,7 @@ function renderUpgradeChoices() {
     card.className = "upgrade-card";
     card.dataset.upgradeId = upgrade.id;
     card.style.setProperty("--rarity-color", rarity.color);
+    card.style.setProperty("--offer-index", String(index));
     if (patron) {
       card.classList.add("patron-upgrade-card", `effect-${patron.effect}`);
       card.style.setProperty("--source-color", patron.color);
@@ -6069,13 +6316,24 @@ async function selectUpgrade(id) {
     updateSynergyUI();
     if (state.rewardType === "upgrade") {
       state.upgradePicks += 1;
-      if (state.upgradePicks % 3 === 0) {
+      if (state.upgradePicks % MUTATION_UPGRADE_INTERVAL === 0) {
         state.mutationRound += 1;
         state.rewardQueue.unshift({ type: "mutation", tier: state.mutationRound });
-        addLog(`三件东西开始在武器里说梦话。第 ${state.mutationRound} 次武器异梦即将开始。`, true);
+        addLog(`积累的强化开始在武器里说梦话。第 ${state.mutationRound} 次武器异梦即将开始。`, true);
       }
     }
-    await playUpgradeCeremony(upgrade);
+    if (patronId) {
+      const selectedCard = [...ui.upgradeOptions.querySelectorAll(".upgrade-card")]
+        .find((card) => card.dataset.upgradeId === upgrade.id);
+      ui.upgradeOptions.querySelectorAll(".upgrade-card").forEach((card) => {
+        card.classList.add(card === selectedCard ? "boon-claimed" : "boon-dismissed");
+      });
+      audio.tone(520, .12, "triangle", .025, 260);
+      audio.tone(780, .18, "sine", .014, 180);
+      await waitForCeremony(280);
+    } else {
+      await playUpgradeCeremony(upgrade);
+    }
   } finally {
     ceremonyRunning = false;
     closeReward();
@@ -6093,7 +6351,7 @@ function rerollUpgrades() {
     generateMutations(currentMutationWish);
     return;
   }
-  currentUpgradeChoices = availableUpgrades(state.rewardType === "artifact");
+  currentUpgradeChoices = availableUpgrades(state.rewardType === "artifact", currentUpgradePatron);
   renderUpgradeChoices();
   audio.tone(280, .1, "triangle", .025, 220);
 }
@@ -6229,6 +6487,46 @@ function stopWeaponPreview() {
   weaponPreviewFrame = 0;
 }
 
+function stopMutationPreview() {
+  if (mutationPreviewFrame) cancelAnimationFrame(mutationPreviewFrame);
+  mutationPreviewFrame = 0;
+}
+
+function mutationPreviewWeapon(choice) {
+  const source = weapons[choice?.target_index];
+  if (!source || !choice) return null;
+  const mutation = {
+    title: choice.title,
+    description: choice.description,
+    color: choice.accent_color,
+    effects: Array.isArray(choice.effects) ? choice.effects.map((rule) => ({ ...rule })) : [],
+    round: choice.mutation_round || state.mutationRound,
+  };
+  const preview = hydrateWeapon({
+    ...source,
+    name: choice.evolution_name,
+    description: choice.description,
+    color: choice.accent_color,
+    tags: [...new Set([...(source.tags || []), ...(choice.tags || [])])].slice(-4),
+    mutations: [...(source.mutations || []).map((item) => ({ ...item })), mutation],
+  });
+  if (choice.tradeoff === "damage_down") preview.mutationDamageScale *= .88;
+  else if (choice.tradeoff === "cooldown_up") preview.mutationCooldownScale *= 1.10;
+  else if (choice.tradeoff === "range_down") preview.mutationRangeScale *= .90;
+  return preview;
+}
+
+function playMutationHammerEffect() {
+  ui.upgrade.classList.remove("mutation-hammering");
+  void ui.upgrade.offsetWidth;
+  ui.upgrade.classList.add("mutation-hammering");
+  audio.hammerStrike("precision");
+  setTimeout(() => {
+    if (!ui.upgrade.hidden && state.rewardType === "mutation") audio.hammerStrike("precision");
+  }, 280);
+  setTimeout(() => ui.upgrade.classList.remove("mutation-hammering"), 980);
+}
+
 function previewProjectilePosition(trajectory, progress, start, target, offset, time) {
   if (trajectory === "skyfall") {
     return { x: target.x + offset * 18, y: target.y - 150 + progress * 150 };
@@ -6254,8 +6552,44 @@ function previewProjectilePosition(trajectory, progress, start, target, offset, 
   return { x: x + normalX * curve, y: y + normalY * curve };
 }
 
-function drawWeaponPreviewFrame(weapon, elapsed) {
-  const preview = ui.resultWeaponCanvas;
+function drawMutationRulePreview(context, weapon, targets, targetIndex, attackProgress, elapsed) {
+  const rules = (weapon.mutations || []).flatMap((mutation) => mutation.effects || [])
+    .filter((rule) => rule.action !== "repeat_attack");
+  if (!rules.length) return;
+  const target = targets[targetIndex];
+  const pulse = Math.max(0, 1 - (attackProgress - .78) / .22);
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  for (const [index, rule] of rules.slice(0, 3).entries()) {
+    const color = effectVisualColors[rule.visual] || weapon.color;
+    context.globalAlpha = Math.max(.14, pulse * (.72 - index * .12));
+    context.strokeStyle = color;
+    context.fillStyle = `${color}18`;
+    context.lineWidth = 1.5 + index * .6;
+    if (rule.action === "chain") {
+      let from = target;
+      for (const enemy of targets.filter((_, enemyIndex) => enemyIndex !== targetIndex).slice(0, Math.max(1, Math.min(3, Number(rule.count) || 2)))) {
+        context.beginPath(); context.moveTo(from.x, from.y); context.lineTo(enemy.x, enemy.y); context.stroke();
+        from = enemy;
+      }
+    } else if (["spawn_projectiles", "modify_projectile"].includes(rule.action)) {
+      const count = Math.max(2, Math.min(8, Number(rule.count) || 3));
+      for (let shot = 0; shot < count; shot += 1) {
+        const angle = shot / count * Math.PI * 2 + elapsed * .8;
+        const distance = 18 + (1 - pulse) * 56;
+        context.beginPath();
+        context.arc(target.x + Math.cos(angle) * distance, target.y + Math.sin(angle) * distance, 2.5, 0, Math.PI * 2);
+        context.fill();
+      }
+    } else {
+      const radius = 18 + (1 - pulse) * Math.min(110, Math.max(42, Number(rule.radius) || 72));
+      context.beginPath(); context.arc(target.x, target.y, radius, 0, Math.PI * 2); context.fill(); context.stroke();
+    }
+  }
+  context.restore();
+}
+
+function drawWeaponPreviewFrame(weapon, elapsed, preview = ui.resultWeaponCanvas) {
   const previewCtx = preview.getContext("2d");
   const w = preview.width;
   const h = preview.height;
@@ -6281,13 +6615,30 @@ function drawWeaponPreviewFrame(weapon, elapsed) {
   previewCtx.beginPath(); previewCtx.arc(source.x, source.y, previewRange, 0, Math.PI * 2); previewCtx.stroke(); previewCtx.restore();
 
   const attackInterval = Math.max(.52, Math.min(1.35, Number(weapon.cooldown) || 1));
-  const attackProgress = (elapsed % attackInterval) / attackInterval;
+  const cycleElapsed = elapsed % attackInterval;
+  const repeatRule = weaponEffectRules(weapon, "on_attack")
+    .find((rule) => rule.action === "repeat_attack");
+  const repeatCount = repeatRule ? Math.max(1, Math.min(7, Number(repeatRule.count) || 1)) : 0;
+  const shotCount = 1 + repeatCount;
+  const shotDelay = repeatRule ? Math.max(.06, Math.min(.22, Number(repeatRule.delay) || .12)) : 0;
+  const flightWindow = repeatRule
+    ? Math.max(.22, attackInterval - shotDelay * repeatCount)
+    : attackInterval;
+  const shotProgresses = [];
+  for (let shot = 0; shot < shotCount; shot += 1) {
+    const progress = (cycleElapsed - shot * shotDelay) / flightWindow;
+    if (progress >= 0 && progress <= 1) shotProgresses.push({ progress, shot });
+  }
+  const attackProgress = shotProgresses.length
+    ? shotProgresses[shotProgresses.length - 1].progress
+    : cycleElapsed / attackInterval;
   const shotIndex = Math.floor(elapsed / attackInterval);
   const targetIndex = weapon.targeting === "strongest" ? 1 : weapon.targeting === "cluster" ? 3 : weapon.targeting === "random" ? shotIndex % targets.length : 3;
   const target = targets[targetIndex];
 
   for (const [index, enemy] of targets.entries()) {
-    const hitPulse = index === targetIndex && attackProgress > .78 ? (1 - attackProgress) / .22 : 0;
+    const impactShot = shotProgresses.find(({ progress }) => progress > .78);
+    const hitPulse = index === targetIndex && impactShot ? (1 - impactShot.progress) / .22 : 0;
     previewCtx.save(); previewCtx.translate(enemy.x, enemy.y); previewCtx.rotate(elapsed * .35 + index);
     previewCtx.shadowBlur = 14 + hitPulse * 25; previewCtx.shadowColor = weapon.color;
     previewCtx.fillStyle = index === targetIndex ? `${weapon.color}aa` : "#25314a";
@@ -6298,16 +6649,20 @@ function drawWeaponPreviewFrame(weapon, elapsed) {
 
   previewCtx.save(); previewCtx.globalCompositeOperation = "lighter"; previewCtx.shadowColor = weapon.color; previewCtx.shadowBlur = 16;
   if (weapon.delivery === "beam") {
-    const pulse = Math.max(0, 1 - attackProgress * 4.8);
-    if (pulse > 0) {
-      previewCtx.globalAlpha = .25 + pulse * .75; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 3 + pulse * Number(weapon.projectile_size || 5) * .5;
-      previewCtx.beginPath(); previewCtx.moveTo(source.x + 30, source.y); previewCtx.lineTo(target.x, target.y); previewCtx.stroke();
-      previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.2; previewCtx.stroke();
+    for (const { progress } of shotProgresses) {
+      const pulse = Math.max(0, 1 - progress * 4.8);
+      if (pulse > 0) {
+        previewCtx.globalAlpha = .25 + pulse * .75; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 3 + pulse * Number(weapon.projectile_size || 5) * .5;
+        previewCtx.beginPath(); previewCtx.moveTo(source.x + 30, source.y); previewCtx.lineTo(target.x, target.y); previewCtx.stroke();
+        previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.2; previewCtx.stroke();
+      }
     }
   } else if (weapon.delivery === "aura") {
-    const radius = 30 + attackProgress * Math.min(150, Number(weapon.range || 160) * .7);
-    previewCtx.globalAlpha = 1 - attackProgress * .7; previewCtx.fillStyle = `${weapon.color}12`; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 2.5;
-    previewCtx.beginPath(); previewCtx.arc(source.x, source.y, radius, 0, Math.PI * 2); previewCtx.fill(); previewCtx.stroke();
+    for (const { progress } of shotProgresses) {
+      const radius = 30 + progress * Math.min(150, Number(weapon.range || 160) * .7);
+      previewCtx.globalAlpha = 1 - progress * .7; previewCtx.fillStyle = `${weapon.color}12`; previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 2.5;
+      previewCtx.beginPath(); previewCtx.arc(source.x, source.y, radius, 0, Math.PI * 2); previewCtx.fill(); previewCtx.stroke();
+    }
   } else if (weapon.delivery === "orbit") {
     const count = Math.max(1, Math.min(8, Number(weapon.projectile_count) || 1));
     const radius = Math.min(105, Math.max(48, Number(weapon.range || 120) * .48));
@@ -6319,38 +6674,45 @@ function drawWeaponPreviewFrame(weapon, elapsed) {
     }
   } else if (weapon.delivery === "melee") {
     const reach = Math.min(155, Math.max(70, Number(weapon.range || 100)));
-    const swing = -1.05 + Math.min(1, attackProgress * 2.2) * 2.1;
-    previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 9 * (1 - Math.min(.75, attackProgress)); previewCtx.lineCap = "round";
-    previewCtx.beginPath(); previewCtx.arc(source.x, source.y, reach, swing - .85, swing + .25); previewCtx.stroke();
-    previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.5; previewCtx.stroke();
+    for (const { progress } of shotProgresses) {
+      const swing = -1.05 + Math.min(1, progress * 2.2) * 2.1;
+      previewCtx.strokeStyle = weapon.color; previewCtx.lineWidth = 9 * (1 - Math.min(.75, progress)); previewCtx.lineCap = "round";
+      previewCtx.beginPath(); previewCtx.arc(source.x, source.y, reach, swing - .85, swing + .25); previewCtx.stroke();
+      previewCtx.strokeStyle = "#fff"; previewCtx.lineWidth = 1.5; previewCtx.stroke();
+    }
   } else {
     const count = Math.max(1, Math.min(8, Number(weapon.projectile_count) || 1));
-    for (let index = 0; index < count; index += 1) {
-      const offset = index - (count - 1) / 2;
-      const orbitAngle = elapsed * 2.35 + index / count * Math.PI * 2;
-      const launchSource = weapon.orbit_launch
-        ? { x: source.x + Math.cos(orbitAngle) * 54, y: source.y + Math.sin(orbitAngle) * 38 }
-        : source;
-      const flightProgress = weapon.orbit_launch ? Math.max(0, (attackProgress - .24) / .76) : attackProgress;
-      const point = previewProjectilePosition(weapon.trajectory, flightProgress, launchSource, target, offset, elapsed);
-      const previous = previewProjectilePosition(weapon.trajectory, Math.max(0, flightProgress - .08), launchSource, target, offset, elapsed);
-      previewCtx.strokeStyle = `${weapon.color}88`; previewCtx.lineWidth = 2; previewCtx.beginPath(); previewCtx.moveTo(previous.x, previous.y); previewCtx.lineTo(point.x, point.y); previewCtx.stroke();
-      if (weapon.orbit_launch && inferVisualForm(weapon) === "blade") {
-        const heading = flightProgress > 0 ? Math.atan2(point.y - previous.y, point.x - previous.x) : orbitAngle + Math.PI / 2;
-        drawWeaponModel(previewCtx, weapon, point.x, point.y, heading, .3, 1);
-      } else {
-        previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(point.x, point.y, Math.max(3, Number(weapon.projectile_size || 5) * .48), 0, Math.PI * 2); previewCtx.fill();
+    for (const { progress, shot } of shotProgresses) {
+      for (let index = 0; index < count; index += 1) {
+        const offset = index - (count - 1) / 2;
+        const orbitAngle = elapsed * 2.35 + index / count * Math.PI * 2 + shot * .08;
+        const launchSource = weapon.orbit_launch
+          ? { x: source.x + Math.cos(orbitAngle) * 54, y: source.y + Math.sin(orbitAngle) * 38 }
+          : source;
+        const flightProgress = weapon.orbit_launch ? Math.max(0, (progress - .24) / .76) : progress;
+        const point = previewProjectilePosition(weapon.trajectory, flightProgress, launchSource, target, offset, elapsed);
+        const previous = previewProjectilePosition(weapon.trajectory, Math.max(0, flightProgress - .08), launchSource, target, offset, elapsed);
+        previewCtx.globalAlpha = Math.max(.38, 1 - shot * .16);
+        previewCtx.strokeStyle = `${weapon.color}88`; previewCtx.lineWidth = 2; previewCtx.beginPath(); previewCtx.moveTo(previous.x, previous.y); previewCtx.lineTo(point.x, point.y); previewCtx.stroke();
+        if (weapon.orbit_launch && inferVisualForm(weapon) === "blade") {
+          const heading = flightProgress > 0 ? Math.atan2(point.y - previous.y, point.x - previous.x) : orbitAngle + Math.PI / 2;
+          drawWeaponModel(previewCtx, weapon, point.x, point.y, heading, .3, 1);
+        } else {
+          previewCtx.fillStyle = weapon.color; previewCtx.beginPath(); previewCtx.arc(point.x, point.y, Math.max(3, Number(weapon.projectile_size || 5) * .48), 0, Math.PI * 2); previewCtx.fill();
+        }
       }
     }
   }
 
-  if (attackProgress > .8 && (Number(weapon.explosion_radius) > 0 || Number(weapon.burn_damage) > 0 || Number(weapon.poison_damage) > 0 || Number(weapon.slow_percent) > 0)) {
-    const impactProgress = (attackProgress - .8) / .2;
+  const impactShot = shotProgresses.find(({ progress }) => progress > .8);
+  if (impactShot && (Number(weapon.explosion_radius) > 0 || Number(weapon.burn_damage) > 0 || Number(weapon.poison_damage) > 0 || Number(weapon.slow_percent) > 0)) {
+    const impactProgress = (impactShot.progress - .8) / .2;
     const radius = 18 + impactProgress * Math.max(38, Math.min(105, Number(weapon.explosion_radius) || 58));
     const statusColor = Number(weapon.poison_damage) > 0 ? "#67e86f" : Number(weapon.burn_damage) > 0 ? "#ff7a38" : weapon.color;
     previewCtx.globalAlpha = 1 - impactProgress * .72; previewCtx.strokeStyle = statusColor; previewCtx.fillStyle = `${statusColor}18`; previewCtx.lineWidth = 2;
     previewCtx.beginPath(); previewCtx.arc(target.x, target.y, radius, 0, Math.PI * 2); previewCtx.fill(); previewCtx.stroke();
   }
+  if (impactShot) drawMutationRulePreview(previewCtx, weapon, targets, targetIndex, impactShot.progress, elapsed);
   previewCtx.restore();
 
   previewCtx.save(); previewCtx.globalCompositeOperation = "lighter";
@@ -6374,6 +6736,26 @@ function drawWeaponPreview(weapon) {
     weaponPreviewFrame = requestAnimationFrame(renderPreview);
   };
   weaponPreviewFrame = requestAnimationFrame(renderPreview);
+}
+
+function startMutationPreview(choice, preview, timeLabel, progressFill) {
+  stopMutationPreview();
+  const weapon = mutationPreviewWeapon(choice);
+  if (!weapon) return;
+  mutationPreviewStartedAt = performance.now();
+  const renderPreview = (now) => {
+    if (ui.upgrade.hidden || state.rewardType !== "mutation" || !preview.isConnected) {
+      stopMutationPreview();
+      return;
+    }
+    const elapsedMs = (now - mutationPreviewStartedAt) % 5000;
+    const elapsed = elapsedMs / 1000;
+    drawWeaponPreviewFrame(weapon, elapsed, preview);
+    timeLabel.textContent = `${(5 - elapsed).toFixed(1)}s`;
+    progressFill.style.width = `${elapsedMs / 50}%`;
+    mutationPreviewFrame = requestAnimationFrame(renderPreview);
+  };
+  mutationPreviewFrame = requestAnimationFrame(renderPreview);
 }
 
 function rejectWeaponAndReforge() {
@@ -6543,6 +6925,17 @@ ui.archetypePresets.addEventListener("click", (event) => {
   for (const item of ui.archetypePresets.querySelectorAll("button")) item.classList.toggle("active", item === button);
 });
 ui.upgradeOptions.addEventListener("click", (event) => {
+  const retryMutation = event.target.closest("button[data-mutation-retry]");
+  if (retryMutation) {
+    renderMutationWishForm(state.mutationRound);
+    return;
+  }
+  const recommend = event.target.closest("button[data-mutation-recommend]");
+  if (recommend) {
+    recommend.disabled = true;
+    generateMutations("", { recommend: true });
+    return;
+  }
   const quickWish = event.target.closest("button[data-mutation-wish]");
   if (quickWish) {
     const input = ui.upgradeOptions.querySelector("[data-mutation-wish-input]");

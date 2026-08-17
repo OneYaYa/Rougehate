@@ -106,10 +106,20 @@ class TrailerContractTests(unittest.TestCase):
         self.assertIn("def detect_capture_inpoint", RENDERER)
 
     def test_capture_hides_boot_frames_and_has_no_fake_letterbox(self):
-        self.assertIn('classList.add("trailer-capture-boot")', (ROOT / "index.html").read_text(encoding="utf-8"))
+        self.assertIn('classList.add("trailer-capture-boot")', (ROOT / "trailer-boot.js").read_text(encoding="utf-8"))
         self.assertIn('classList.remove("trailer-capture-boot")', TRAILER)
         self.assertNotIn("rh-trailer-letterbox", TRAILER)
         self.assertNotIn("rh-trailer-letterbox", TRAILER_CSS)
+
+    def test_end_card_reuses_the_launch_logo_and_weapon_compiler(self):
+        self.assertIn('document.querySelector(".launch-title")', TRAILER)
+        self.assertIn('document.querySelector(".launch-forge")', TRAILER)
+        self.assertIn('classList.add("rh-trailer-end-title")', TRAILER)
+        self.assertIn('classList.add("rh-trailer-end-forge")', TRAILER)
+        self.assertIn("AI COSMIC ARMORY // ONLINE", TRAILER)
+        self.assertIn(".rh-trailer-end .rh-trailer-end-forge", TRAILER_CSS)
+        self.assertIn("h1.rh-trailer-end-title", TRAILER_CSS)
+        self.assertNotIn("<h1>ROUGE <i>HATE</i></h1>", TRAILER)
 
 
 if __name__ == "__main__":

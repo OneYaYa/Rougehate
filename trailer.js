@@ -66,9 +66,12 @@
     </section>
     <div class="rh-trailer-flash"></div>
     <div class="rh-trailer-end">
-      <div>
-        <h1>ROUGE <i>HATE</i></h1>
-        <small>立即试玩</small>
+      <div class="rh-trailer-end-grid"></div>
+      <div class="rh-trailer-end-forge-slot" aria-hidden="true"></div>
+      <div class="rh-trailer-end-copy">
+        <span class="rh-trailer-end-kicker">AI COSMIC ARMORY // ONLINE</span>
+        <div class="rh-trailer-end-logo"></div>
+        <small><b>立即试玩</b><i>ENTER THE FORGE</i></small>
       </div>
     </div>`;
   document.body.append(layer);
@@ -77,6 +80,34 @@
   const patronRoster = layer.querySelector(".rh-trailer-patrons");
   const flash = layer.querySelector(".rh-trailer-flash");
   const endCard = layer.querySelector(".rh-trailer-end");
+  const launchTitle = document.querySelector(".launch-title");
+  const launchForge = document.querySelector(".launch-forge");
+  if (launchTitle) {
+    const endTitle = launchTitle.cloneNode(true);
+    endTitle.classList.add("rh-trailer-end-title");
+    endCard.querySelector(".rh-trailer-end-logo")?.append(endTitle);
+  }
+  if (launchForge) {
+    const endForge = launchForge.cloneNode(true);
+    endForge.classList.add("rh-trailer-end-forge");
+    endForge.setAttribute("aria-hidden", "true");
+    const renamedIds = new Map();
+    endForge.querySelectorAll("[id]").forEach((node) => {
+      const oldId = node.id;
+      node.id = `${oldId}-trailer`;
+      renamedIds.set(oldId, node.id);
+    });
+    endForge.querySelectorAll("*").forEach((node) => {
+      for (const attribute of ["fill", "filter", "stroke", "clip-path", "mask"]) {
+        const value = node.getAttribute(attribute);
+        if (!value) continue;
+        let nextValue = value;
+        renamedIds.forEach((newId, oldId) => { nextValue = nextValue.replace(`url(#${oldId})`, `url(#${newId})`); });
+        if (nextValue !== value) node.setAttribute(attribute, nextValue);
+      }
+    });
+    endCard.querySelector(".rh-trailer-end-forge-slot")?.append(endForge);
+  }
   const later = (seconds, task) => window.setTimeout(task, seconds * 1000);
 
   function caption(kicker, title, subtitle = "", accent = "#58e6ff", placement = "") {
@@ -611,36 +642,25 @@
     state.rewardType = "mutation";
     state.mutationRound = 3;
     ui.upgrade.hidden = false;
-    ui.upgradeTitle.textContent = "选择武器进化";
-    ui.upgradeSubtitle.textContent = "三选一";
+    ui.upgrade.classList.add("single-mutation-mode");
+    ui.upgradeTitle.textContent = "武器异梦已成形";
+    ui.upgradeSubtitle.textContent = "唯一结果 · 先看实战预览";
     currentMutationWish = "命中后撕开虫洞，把敌群拖进雷暴。";
     currentMutationChoices = [
       {
         target_index: 1, target_name: "遮天幼星群", title: "事件视界",
         description: "把敌群拖向同一次撞击。",
         tradeoff: "cooldown_up", tradeoff_text: "攻击间隔 +10%", evolution_name: "事件视界",
-        accent_color: "#a66bff", tags: ["奇点", "牵引"], mutation_round: 3, effects: [],
-      },
-      {
-        target_index: 1, target_name: "遮天幼星群", title: "折返星潮",
-        description: "贯穿后折返，再次命中。",
-        tradeoff: "damage_down", tradeoff_text: "伤害 -12%", evolution_name: "折返星潮",
-        accent_color: "#78eaff", tags: ["折返", "穿透"], mutation_round: 3, effects: [],
-      },
-      {
-        target_index: 1, target_name: "遮天幼星群", title: "雷暴孵化",
-        description: "每次命中都会孵化连锁雷暴。",
-        tradeoff: "range_down", tradeoff_text: "距离 -10%", evolution_name: "雷暴孵化",
-        accent_color: "#d8fbff", tags: ["连锁", "雷暴"], mutation_round: 3, effects: [],
+        accent_color: "#a66bff", tags: ["奇点", "牵引"], mutation_round: 3,
+        effects: [{ trigger: "on_hit", action: "pull", target: "around_hit", trajectory: "inherit", status: "none", visual: "gravity", amount: .72, count: 1, radius: 138, delay: .1, duration: 1.2, chance: 1 }],
       },
     ];
     renderMutationChoices();
     ui.upgrade.querySelector(".chapter").textContent = "武器异变";
-    ui.upgradeSubtitle.textContent = "三选一";
-    ui.upgradeOptions.querySelectorAll(".mutation-card").forEach((card, index) => {
-      card.querySelector(".upgrade-icon").textContent = ["一", "二", "三"][index];
-      card.querySelector(".upgrade-rarity").textContent = "进化";
-    });
+    ui.upgradeSubtitle.textContent = "唯一结果 · 5 秒实战预览";
+    const card = ui.upgradeOptions.querySelector(".mutation-card");
+    card?.querySelector(".upgrade-icon")?.replaceChildren(document.createTextNode("一"));
+    if (card?.querySelector(".upgrade-rarity")) card.querySelector(".upgrade-rarity").textContent = "进化";
   }
 
   function startTrailer() {
