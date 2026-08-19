@@ -35,9 +35,6 @@ STATIC_FILES = {
     "/styles.css": "/styles.css",
     "/vfx-library.js": "/vfx-library.js",
     "/game.js": "/game.js",
-    "/trailer.css": "/trailer.css",
-    "/trailer-boot.js": "/trailer-boot.js",
-    "/trailer.js": "/trailer.js",
 }
 ALLOWED_ASSET_SUFFIXES = {".png", ".webp", ".jpg", ".jpeg", ".gif"}
 

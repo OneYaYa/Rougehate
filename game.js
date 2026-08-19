@@ -3582,10 +3582,9 @@ function update(dt) {
 }
 
 function playerScreenPosition() {
-  const trailerOffset = window.ROUGE_HATE_TRAILER_CAMERA || { x: 0, y: 0 };
   return {
-    x: width / 2 + (Number(trailerOffset.x) || 0),
-    y: height / 2 + (Number(trailerOffset.y) || 0),
+    x: width / 2,
+    y: height / 2,
   };
 }
 
