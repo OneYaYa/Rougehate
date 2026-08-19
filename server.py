@@ -13,6 +13,7 @@ import mimetypes
 import os
 import random
 import re
+import signal
 import threading
 import time
 import urllib.error
@@ -26,8 +27,6 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
-HOST = os.getenv("ROUGEHATE_HOST", "127.0.0.1")
-PORT = int(os.getenv("ROUGEHATE_PORT", "8787"))
 OPENAI_URL = "https://api.openai.com/v1/responses"
 DEFAULT_MODEL = "gpt-5.6-terra"
 STATIC_FILES = {
@@ -74,6 +73,37 @@ def load_dotenv() -> None:
 
 
 load_dotenv()
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+HOST = os.getenv("ROUGEHATE_HOST", "127.0.0.1")
+# Managed web hosts such as Render provide their listener through PORT. Keep the
+# project-specific variable as the local/self-hosted fallback.
+PORT = int(os.getenv("PORT") or os.getenv("ROUGEHATE_PORT", "8787"))
+AI_ENABLED = env_bool("ROUGEHATE_AI_ENABLED", True)
+TRUST_PROXY = env_bool("ROUGEHATE_TRUST_PROXY", False)
+RATE_LIMIT = max(1, int(os.getenv("ROUGEHATE_RATE_LIMIT", "12")))
+RATE_WINDOW_SECONDS = max(1, int(os.getenv("ROUGEHATE_RATE_WINDOW_SECONDS", "60")))
+
+
+def ai_configured() -> bool:
+    """Return whether public requests may use the configured OpenAI project."""
+    return AI_ENABLED and bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def request_client_ip(peer_ip: str, forwarded_for: str | None = None) -> str:
+    """Resolve a visitor IP, trusting proxy headers only when explicitly enabled."""
+    if TRUST_PROXY and forwarded_for:
+        candidate = forwarded_for.split(",", 1)[0].strip()
+        if candidate:
+            return candidate[:64]
+    return peer_ip[:64]
 
 
 WEAPON_SCHEMA: dict[str, Any] = {
@@ -1338,7 +1368,7 @@ class SlidingWindowLimiter:
             return True
 
 
-limiter = SlidingWindowLimiter()
+limiter = SlidingWindowLimiter(RATE_LIMIT, RATE_WINDOW_SECONDS)
 
 
 class GameHandler(SimpleHTTPRequestHandler):
@@ -1360,23 +1390,27 @@ class GameHandler(SimpleHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{self.log_date_time_string()}] {self.address_string()} {fmt % args}")
 
-    def json_response(self, status: int, body: dict[str, Any]) -> None:
+    def json_response(
+        self, status: int, body: dict[str, Any], extra_headers: dict[str, str] | None = None,
+    ) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802
         path = urlsplit(self.path).path
         if path == "/api/health":
-            configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
+            configured = ai_configured()
             self.json_response(HTTPStatus.OK, {
                 "ok": True,
                 "aiConfigured": configured,
-                "mode": "openai" if configured else "local-demo",
+                "mode": "openai" if configured else ("disabled" if not AI_ENABLED else "local-demo"),
                 "model": os.getenv("OPENAI_MODEL", DEFAULT_MODEL) if configured else None,
             })
             return
@@ -1405,9 +1439,15 @@ class GameHandler(SimpleHTTPRequestHandler):
         if path not in {"/api/generate-weapon", "/api/generate-archetype", "/api/generate-mutations"}:
             self.json_response(HTTPStatus.NOT_FOUND, {"error": "接口不存在"})
             return
-        client_ip = self.client_address[0]
+        client_ip = request_client_ip(
+            self.client_address[0], self.headers.get("X-Forwarded-For"),
+        )
         if not limiter.allow(client_ip):
-            self.json_response(HTTPStatus.TOO_MANY_REQUESTS, {"error": "许愿太频繁，请稍后再试"})
+            self.json_response(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "许愿太频繁，请稍后再试。"},
+                {"Retry-After": str(RATE_WINDOW_SECONDS)},
+            )
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -1420,7 +1460,7 @@ class GameHandler(SimpleHTTPRequestHandler):
                 concept = str(body.get("concept", "")).strip()
                 if not concept or len(concept) > 180:
                     raise ValueError("流派描述需要 1–180 个字符")
-                if os.getenv("OPENAI_API_KEY", "").strip():
+                if ai_configured():
                     raw_archetype = call_archetype_openai(concept, session_id)
                     source = "openai"
                 else:
@@ -1457,7 +1497,7 @@ class GameHandler(SimpleHTTPRequestHandler):
                     )
                 if not mutation_wish:
                     raise ValueError("异梦愿望需要 1–180 个字符")
-                if os.getenv("OPENAI_API_KEY", "").strip():
+                if ai_configured():
                     try:
                         raw_mutations = call_mutation_openai(
                             weapons, build_tags, player_context, session_id, mutation_round, mutation_wish,
@@ -1494,7 +1534,7 @@ class GameHandler(SimpleHTTPRequestHandler):
                 wish = recommended_weapon_wish(combat_state, loadout, forge_tier)
             if not wish or len(wish) > 180:
                 raise ValueError("愿望需要 1–180 个字符")
-            if os.getenv("OPENAI_API_KEY", "").strip():
+            if ai_configured():
                 raw_weapon = call_openai(
                     wish, level, loadout, session_id, forge_tier, archetype,
                     combat_state, recommendation_mode,
@@ -1522,12 +1562,24 @@ class GameHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     mimetypes.add_type("text/javascript", ".js")
     server = ThreadingHTTPServer((HOST, PORT), GameHandler)
-    configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
+    configured = ai_configured()
     mode = f"OpenAI / {os.getenv('OPENAI_MODEL', DEFAULT_MODEL)}" if configured else "本地演示"
     print("\n  ROUGE HATE · AI 武器实验场")
     print(f"  地址: http://{HOST}:{PORT}")
     print(f"  模式: {mode}")
     print("  按 Ctrl+C 停止\n")
+    shutdown_started = threading.Event()
+
+    def request_shutdown(_signum: int, _frame: Any) -> None:
+        if shutdown_started.is_set():
+            return
+        shutdown_started.set()
+        print("\n收到停止信号，正在关闭服务……")
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, request_shutdown)
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:

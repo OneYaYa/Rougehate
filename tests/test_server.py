@@ -8,6 +8,28 @@ import server
 
 
 class WeaponCompilerTests(unittest.TestCase):
+    def test_env_bool_accepts_explicit_public_deployment_values(self):
+        with patch.dict(os.environ, {"ROUGEHATE_TEST_BOOL": "yes"}):
+            self.assertTrue(server.env_bool("ROUGEHATE_TEST_BOOL"))
+        with patch.dict(os.environ, {"ROUGEHATE_TEST_BOOL": "off"}):
+            self.assertFalse(server.env_bool("ROUGEHATE_TEST_BOOL", True))
+
+    def test_proxy_header_is_only_trusted_when_enabled(self):
+        with patch.object(server, "TRUST_PROXY", False):
+            self.assertEqual(server.request_client_ip("172.20.0.3", "203.0.113.8"), "172.20.0.3")
+        with patch.object(server, "TRUST_PROXY", True):
+            self.assertEqual(
+                server.request_client_ip("172.20.0.3", "203.0.113.8, 172.20.0.2"),
+                "203.0.113.8",
+            )
+
+    def test_ai_kill_switch_overrides_a_present_key(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            with patch.object(server, "AI_ENABLED", False):
+                self.assertFalse(server.ai_configured())
+            with patch.object(server, "AI_ENABLED", True):
+                self.assertTrue(server.ai_configured())
+
     def test_static_assets_are_allowlisted_without_path_traversal(self):
         self.assertEqual(server.safe_static_request_path("/"), "/index.html")
         self.assertEqual(

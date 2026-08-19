@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: rougehate-oneyaya
+    runtime: python
+    plan: starter
+    buildCommand: python -m compileall -q server.py
+    startCommand: python server.py
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-terra
+      - key: ROUGEHATE_HOST
+        value: 0.0.0.0
+      - key: ROUGEHATE_AI_ENABLED
+        value: true
+      - key: ROUGEHATE_TRUST_PROXY
+        value: true
+      - key: ROUGEHATE_RATE_LIMIT
+        value: 12
+      - key: ROUGEHATE_RATE_WINDOW_SECONDS
+        value: 60
