@@ -141,7 +141,9 @@ const visualMeta = {
 
 const STAGE_DURATION = 180;
 const RUN_DURATION = STAGE_DURATION * 3;
-const INITIAL_XP_NEED = 24;
+const XP_REQUIREMENT_MULTIPLIER = 2.5;
+const XP_GROWTH_EXPONENT = 1.40;
+const INITIAL_XP_NEED = Math.floor(24 * XP_REQUIREMENT_MULTIPLIER);
 const MUTATION_UPGRADE_INTERVAL = 4;
 const BOSS_TIMES = [160, 340, 520];
 const stages = [
@@ -724,6 +726,16 @@ const rarityMeta = {
   legendary: { label: "LEGENDARY / 传说", color: "#ff9f43" },
 };
 
+const patronSigils = Object.freeze({
+  ballistic: "⟐",
+  blaze: "⊛",
+  cryo: "◒",
+  toxin: "⌬",
+  storm: "ϟ",
+  gravity: "⊚",
+  precision: "⟡",
+});
+
 const coreUpgrades = [
   { id: "damage", family: "漂流遗物 · 武器", title: "磨损的枪管", icon: "↗", rarity: "common", max: 6, description: "它已经打过很多仗。所有攻击伤害提高 15%。", apply: () => { bonuses.damage *= 1.15; } },
   { id: "cooldown", family: "漂流遗物 · 时间", title: "提前两秒的表", icon: "⌁", rarity: "uncommon", max: 6, description: "每根指针都很着急。攻击间隔缩短 9%。", apply: () => { bonuses.cooldown *= 0.91; } },
@@ -737,14 +749,14 @@ const coreUpgrades = [
   { id: "pierce", family: "漂流遗物 · 武器", title: "空心钉", icon: "→", rarity: "rare", max: 3, description: "穿进去以后不愿停下。投射物与光束额外贯穿 1 个目标。", apply: () => { bonuses.pierce += 1; } },
   { id: "area", family: "漂流遗物 · 空间", title: "吹不破的泡泡", icon: "◎", rarity: "rare", max: 4, description: "它把周围空间也撑大了。范围与弹体尺寸提高 15%。", apply: () => { bonuses.area *= 1.15; } },
   { id: "regen", family: "漂流遗物 · 肉身", title: "温热输血袋", icon: "♥", rarity: "rare", max: 4, description: "血液仍在轻轻搏动。每秒恢复 0.7 生命。", apply: () => { bonuses.regen += 0.7; } },
-  { id: "ignite", family: "赤日的礼物", title: "永不熄灭的火柴", icon: "♨", rarity: "rare", max: 4, description: "所有命中附加每秒 3 点燃烧，持续 2.2 秒。", apply: () => { bonuses.burn += 3; } },
-  { id: "frost", family: "眠月的礼物", title: "装着冬天的罐头", icon: "❄", rarity: "rare", max: 4, description: "打开以后，所有命中额外减速 9%。", apply: () => { bonuses.slow = Math.min(.45, bonuses.slow + .09); } },
-  { id: "venom", family: "孢母的礼物", title: "会呼吸的霉斑", icon: "☣", rarity: "epic", max: 3, description: "所有命中附加每秒 3 点中毒；受感染目标承受更多直接伤害。", apply: () => { bonuses.poison += 3; bonuses.venomAmp += .09; } },
-  { id: "chain", family: "雷兽的礼物", title: "雷鳗的脊骨", icon: "ϟ", rarity: "epic", max: 3, description: "命中有 22% 概率把电流送往附近敌人。", apply: () => { bonuses.chainChance = Math.min(.7, bonuses.chainChance + .22); bonuses.chainDamage += .18; bonuses.chainTargets += 1; } },
-  { id: "shatter", family: "眠月的礼物", title: "冻裂的乳牙", icon: "✧", rarity: "epic", max: 3, description: "对减速目标造成额外 14% 伤害。", apply: () => { bonuses.shatter += .14; } },
-  { id: "explosion", family: "盲星的礼物", title: "怀孕的弹壳", icon: "※", rarity: "epic", max: 3, description: "每次命中都想再生一次爆炸。所有攻击获得 18 爆炸半径。", apply: () => { bonuses.explosion += 18; } },
-  { id: "gravity", family: "盲星的礼物", title: "很重的黑纽扣", icon: "◉", rarity: "epic", max: 3, description: "爆炸会把周围星兽拽向中心。", apply: () => { bonuses.explosion += 10; bonuses.singularityPull += 8; } },
-  { id: "execute", family: "孢母的礼物", title: "吃剩一半的月亮", icon: "◐", rarity: "epic", max: 3, description: "非 Boss 敌人生命低于 6% 时被直接吞掉。", apply: () => { bonuses.execute = Math.min(.22, bonuses.execute + .06); } },
+  { id: "ignite", family: "赤日的礼物", title: "永不熄灭的火柴", icon: patronSigils.blaze, rarity: "rare", max: 4, description: "所有命中附加每秒 3 点燃烧，持续 2.2 秒。", apply: () => { bonuses.burn += 3; } },
+  { id: "frost", family: "眠月的礼物", title: "装着冬天的罐头", icon: patronSigils.cryo, rarity: "rare", max: 4, description: "打开以后，所有命中额外减速 9%。", apply: () => { bonuses.slow = Math.min(.45, bonuses.slow + .09); } },
+  { id: "venom", family: "孢母的礼物", title: "会呼吸的霉斑", icon: patronSigils.toxin, rarity: "epic", max: 3, description: "所有命中附加每秒 3 点中毒；受感染目标承受更多直接伤害。", apply: () => { bonuses.poison += 3; bonuses.venomAmp += .09; } },
+  { id: "chain", family: "雷兽的礼物", title: "雷鳗的脊骨", icon: patronSigils.storm, rarity: "epic", max: 3, description: "命中有 22% 概率把电流送往附近敌人。", apply: () => { bonuses.chainChance = Math.min(.7, bonuses.chainChance + .22); bonuses.chainDamage += .18; bonuses.chainTargets += 1; } },
+  { id: "shatter", family: "眠月的礼物", title: "冻裂的乳牙", icon: patronSigils.cryo, rarity: "epic", max: 3, description: "对减速目标造成额外 14% 伤害。", apply: () => { bonuses.shatter += .14; } },
+  { id: "explosion", family: "盲星的礼物", title: "怀孕的弹壳", icon: patronSigils.gravity, rarity: "epic", max: 3, description: "每次命中都想再生一次爆炸。所有攻击获得 18 爆炸半径。", apply: () => { bonuses.explosion += 18; } },
+  { id: "gravity", family: "盲星的礼物", title: "很重的黑纽扣", icon: patronSigils.gravity, rarity: "epic", max: 3, description: "爆炸会把周围星兽拽向中心。", apply: () => { bonuses.explosion += 10; bonuses.singularityPull += 8; } },
+  { id: "execute", family: "孢母的礼物", title: "吃剩一半的月亮", icon: patronSigils.toxin, rarity: "epic", max: 3, description: "非 Boss 敌人生命低于 6% 时被直接吞掉。", apply: () => { bonuses.execute = Math.min(.22, bonuses.execute + .06); } },
 ];
 
 function tradeMaxHp(amount) {
@@ -754,7 +766,7 @@ function tradeMaxHp(amount) {
 
 const upgradeFamilyBlueprints = [
   {
-    id: "ballistic", label: "白鸦", icon: "➤", partner: "gravity",
+    id: "ballistic", label: "白鸦", icon: patronSigils.ballistic, partner: "gravity",
     nodes: [
       ["白羽膛线", "common", 3, "白鸦替子弹梳顺羽毛。弹速提高 14%，击退提高。", () => { bonuses.projectileSpeed *= 1.14; bonuses.knockback *= 1.08; }],
       ["铁喙", "common", 3, "弹头长出一层鸟喙，额外贯穿 1 个目标。", () => { bonuses.pierce += 1; }],
@@ -768,7 +780,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "blaze", label: "赤日", icon: "♨", partner: "toxin",
+    id: "blaze", label: "赤日", icon: patronSigils.blaze, partner: "toxin",
     nodes: [
       ["太阳的指纹", "common", 3, "赤日在弹头上按了一下。命中附加 2 点燃烧。", () => { bonuses.burn += 2; }],
       ["烧不完的裹尸布", "common", 3, "火焰会在尸布上多停留一会儿。状态持续时间 +14%。", () => { bonuses.statusDuration *= 1.14; }],
@@ -782,7 +794,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "cryo", label: "眠月", icon: "❄", partner: "precision",
+    id: "cryo", label: "眠月", icon: patronSigils.cryo, partner: "precision",
     nodes: [
       ["月背的霜", "common", 3, "眠月把永远见不到光的那一面抹在武器上。命中减速 +6%。", () => { bonuses.slow = Math.min(.55, bonuses.slow + .06); }],
       ["停走的雪花", "common", 3, "它悬在半空，不肯落地。状态持续 +12%，范围 +5%。", () => { bonuses.statusDuration *= 1.12; bonuses.area *= 1.05; }],
@@ -796,7 +808,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "toxin", label: "孢母", icon: "☣", partner: "blaze",
+    id: "toxin", label: "孢母", icon: patronSigils.toxin, partner: "blaze",
     nodes: [
       ["弹仓里的蘑菇", "common", 3, "每次开火都会惊醒一点菌丝。中毒伤害 +2。", () => { bonuses.poison += 2; bonuses.venomAmp += .02; }],
       ["绿牙", "common", 3, "孢母教伤口继续咀嚼。受持续伤害目标承受额外 6% 直伤。", () => { bonuses.venomAmp += .06; }],
@@ -810,7 +822,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "storm", label: "雷兽", icon: "ϟ", partner: "precision",
+    id: "storm", label: "雷兽", icon: patronSigils.storm, partner: "precision",
     nodes: [
       ["雷兽乳牙", "common", 3, "它咬中一个敌人时，会试着再咬一个。雷链概率 +12%。", () => { bonuses.chainChance = Math.min(.8, bonuses.chainChance + .12); }],
       ["分叉舌头", "common", 3, "雷兽多舔到 1 个目标。", () => { bonuses.chainTargets += 1; }],
@@ -824,7 +836,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "gravity", label: "盲星", icon: "◉", partner: "storm",
+    id: "gravity", label: "盲星", icon: patronSigils.gravity, partner: "storm",
     nodes: [
       ["口袋里的小洞", "common", 3, "别把手指伸进去。所有攻击获得 9 爆炸半径。", () => { bonuses.explosion += 9; }],
       ["很重的眼泪", "common", 3, "盲星哭出的东西会把周围压宽。范围 +8%。", () => { bonuses.area *= 1.08; }],
@@ -838,7 +850,7 @@ const upgradeFamilyBlueprints = [
     ],
   },
   {
-    id: "precision", label: "观星人", icon: "✦", partner: "ballistic",
+    id: "precision", label: "观星人", icon: patronSigils.precision, partner: "ballistic",
     nodes: [
       ["画在眼皮里的星", "common", 3, "闭眼也能看见它。暴击率 +5%。", () => { bonuses.crit += .05; }],
       ["折叠望远镜", "common", 3, "只剩指甲大小，却还能看见尽头。射程 +9%。", () => { bonuses.range *= 1.09; }],
@@ -3132,7 +3144,9 @@ function gainXp(amount) {
   while (state.xp >= state.xpNeed) {
     state.xp -= state.xpNeed;
     state.level += 1;
-    state.xpNeed = Math.floor(22 + Math.pow(state.level, 1.34) * 8);
+    state.xpNeed = Math.floor(
+      (22 + Math.pow(state.level, XP_GROWTH_EXPONENT) * 8) * XP_REQUIREMENT_MULTIPLIER,
+    );
     queueReward("upgrade");
   }
   updateHUD();
@@ -3244,7 +3258,7 @@ function updateEnemies(dt) {
       enemy.burnTickAt = state.time + .35;
       enemy.hp -= tick;
       state.damageDealt += tick;
-      floatText(enemy.x - 8, enemy.y - enemy.radius - 5, `♨${Math.max(1, Math.round(tick))}`, "#ff7a38");
+      floatText(enemy.x - 8, enemy.y - enemy.radius - 5, `${patronSigils.blaze}${Math.max(1, Math.round(tick))}`, "#ff7a38");
       burst(enemy.x, enemy.y, "#ff7a38", 3, 48);
       effects.push({ type: "status", status: "burn", x: enemy.x, y: enemy.y, radius: enemy.radius + 7, color: "#ff7a38", life: .34, maxLife: .34 });
     }
@@ -3253,7 +3267,7 @@ function updateEnemies(dt) {
       enemy.poisonTickAt = state.time + .5;
       enemy.hp -= tick;
       state.damageDealt += tick;
-      floatText(enemy.x + 8, enemy.y - enemy.radius - 5, `☣${Math.max(1, Math.round(tick))}`, "#67e86f");
+      floatText(enemy.x + 8, enemy.y - enemy.radius - 5, `${patronSigils.toxin}${Math.max(1, Math.round(tick))}`, "#67e86f");
       burst(enemy.x, enemy.y, "#67e86f", 3, 38);
       effects.push({ type: "status", status: "poison", x: enemy.x, y: enemy.y, radius: enemy.radius + 9, color: "#67e86f", life: .48, maxLife: .48 });
     }
@@ -5467,7 +5481,7 @@ function closeReward() {
   state.rewardOpen = false;
   ui.forge.hidden = true;
   ui.upgrade.hidden = true;
-  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode", "mutation-hammering");
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode");
   currentUpgradePatron = null;
   if (state.rewardQueue.length > 0) {
     setTimeout(openNextReward, 80);
@@ -5530,13 +5544,13 @@ function tagsForUpgrade(upgrade) {
 }
 
 const ceremonyProfiles = {
-  ballistic: { color: "#e7edf5", accent: "#58e6ff", effect: "feather", sigil: "➤" },
-  blaze: { color: "#ff754f", accent: "#ffb13b", effect: "ember", sigil: "♨" },
-  cryo: { color: "#8fdfff", accent: "#dffaff", effect: "crystal", sigil: "❄" },
-  toxin: { color: "#8ee66b", accent: "#d6ff79", effect: "spore", sigil: "☣" },
-  storm: { color: "#76dfff", accent: "#f1fbff", effect: "lightning", sigil: "ϟ" },
-  gravity: { color: "#b49aff", accent: "#e8dcff", effect: "singularity", sigil: "◉" },
-  precision: { color: "#ffd166", accent: "#fff0ae", effect: "constellation", sigil: "✦" },
+  ballistic: { color: "#e7edf5", accent: "#58e6ff", effect: "feather", sigil: patronSigils.ballistic },
+  blaze: { color: "#ff754f", accent: "#ffb13b", effect: "ember", sigil: patronSigils.blaze },
+  cryo: { color: "#8fdfff", accent: "#dffaff", effect: "crystal", sigil: patronSigils.cryo },
+  toxin: { color: "#8ee66b", accent: "#d6ff79", effect: "spore", sigil: patronSigils.toxin },
+  storm: { color: "#76dfff", accent: "#f1fbff", effect: "lightning", sigil: patronSigils.storm },
+  gravity: { color: "#b49aff", accent: "#e8dcff", effect: "singularity", sigil: patronSigils.gravity },
+  precision: { color: "#ffd166", accent: "#fff0ae", effect: "constellation", sigil: patronSigils.precision },
   survival: { color: "#ff6c89", accent: "#ffd2dc", effect: "pulse", sigil: "♥" },
   mobility: { color: "#65f0db", accent: "#d9fff8", effect: "streak", sigil: "»" },
   economy: { color: "#c9ff5a", accent: "#f1ffc0", effect: "shard", sigil: "◇" },
@@ -5685,22 +5699,6 @@ async function playPatronArrival(patronId, choices) {
     rarity: revealRarity,
     onReveal: () => audio.patronArrival(patronId),
     duration: choices.some((choice) => ["epic", "legendary"].includes(choice.rarity)) ? 1680 : 1480,
-  });
-}
-
-async function playUpgradeCeremony(upgrade) {
-  const profileId = ceremonyProfileIdForUpgrade(upgrade);
-  const profile = ceremonyProfiles[profileId];
-  const patronId = patronIdForUpgrade(upgrade);
-  const patron = patronDefinitions[patronId] || null;
-  if (patron) return;
-  audio.relic(profileId);
-  await showCeremony({
-    type: "relic", profile, seed: upgrade.id,
-    kicker: upgrade.isPom ? "ESSENCE DEEPENED / 神髓强化" : "RELIC SYNCHRONIZED / 普通强化",
-    title: upgrade.title,
-    subtitle: `${upgrade.family || "漂流遗物"} · ${rarityMeta[upgrade.rarity].label}`,
-    sigil: upgrade.icon, duration: 650,
   });
 }
 
@@ -5889,7 +5887,7 @@ async function openUpgrade(type = "upgrade") {
   state.rewardOpen = true;
   state.forging = false;
   ui.upgrade.hidden = true;
-  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode", "mutation-hammering");
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "single-mutation-mode");
   const encounter = rollUpgradeEncounter(type === "artifact");
   currentUpgradePatron = encounter.patronId;
   currentUpgradeChoices = encounter.choices;
@@ -5934,8 +5932,8 @@ function renderMutationLoading() {
   card.className = "upgrade-card mutation-loading-card";
   card.style.setProperty("--rarity-color", "#b8c2ce");
   const icon = document.createElement("span");
-  icon.className = "upgrade-icon";
-  icon.textContent = "梦";
+  icon.className = "upgrade-icon mutation-forge-icon";
+  icon.setAttribute("aria-label", "武器异梦");
   const label = document.createElement("span");
   label.className = "upgrade-rarity";
   label.textContent = "WEAPON DREAM / 武器异梦";
@@ -6027,7 +6025,7 @@ function openMutation(round = 1) {
   state.rewardOpen = true;
   state.forging = false;
   state.rewardType = "mutation";
-  ui.upgrade.classList.remove("patron-offer", "offer-revealed", "mutation-hammering");
+  ui.upgrade.classList.remove("patron-offer", "offer-revealed");
   ui.upgrade.classList.add("single-mutation-mode");
   state.mutationRound = Math.max(state.mutationRound, round);
   ui.upgrade.hidden = false;
@@ -6113,8 +6111,8 @@ function renderMutationChoices() {
     number.className = "upgrade-number";
     number.textContent = `0${index + 1}`;
     const icon = document.createElement("span");
-    icon.className = "upgrade-icon";
-    icon.textContent = "AI";
+    icon.className = "upgrade-icon mutation-forge-icon";
+    icon.setAttribute("aria-label", "武器异梦");
     const rarity = document.createElement("span");
     rarity.className = "upgrade-rarity";
     rarity.textContent = "AI FORGE / 金属异变";
@@ -6146,11 +6144,7 @@ function renderMutationChoices() {
     progress.className = "preview-video-progress";
     const progressFill = document.createElement("i");
     progress.append(progressFill);
-    const hammer = document.createElement("div");
-    hammer.className = "mutation-hammer-vfx";
-    hammer.setAttribute("aria-hidden", "true");
-    hammer.append(document.createElement("i"), document.createElement("b"), document.createElement("span"));
-    preview.append(canvas, hud, progress, hammer);
+    preview.append(canvas, hud, progress);
     const accept = document.createElement("button");
     accept.type = "button";
     accept.className = "primary-button mutation-accept-button";
@@ -6162,7 +6156,6 @@ function renderMutationChoices() {
   });
   ui.upgradeRerolls.textContent = `刷新次数 ${state.rerolls}`;
   ui.reroll.disabled = state.rerolls <= 0;
-  playMutationHammerEffect();
 }
 
 function applyAdaptiveEvolution() {
@@ -6189,8 +6182,6 @@ async function selectMutation(index) {
   ceremonyRunning = true;
   ui.upgradeOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
   try {
-    playMutationHammerEffect();
-    await waitForCeremony(380);
     weapon.mutations ||= [];
     weapon.mutations.push({
       title: choice.title, description: choice.description, color: choice.accent_color,
@@ -6330,9 +6321,7 @@ async function selectUpgrade(id) {
       audio.tone(520, .12, "triangle", .025, 260);
       audio.tone(780, .18, "sine", .014, 180);
       await waitForCeremony(280);
-    } else {
-      await playUpgradeCeremony(upgrade);
-    }
+    } else audio.relic(ceremonyProfileIdForUpgrade(upgrade));
   } finally {
     ceremonyRunning = false;
     closeReward();
@@ -6513,17 +6502,6 @@ function mutationPreviewWeapon(choice) {
   else if (choice.tradeoff === "cooldown_up") preview.mutationCooldownScale *= 1.10;
   else if (choice.tradeoff === "range_down") preview.mutationRangeScale *= .90;
   return preview;
-}
-
-function playMutationHammerEffect() {
-  ui.upgrade.classList.remove("mutation-hammering");
-  void ui.upgrade.offsetWidth;
-  ui.upgrade.classList.add("mutation-hammering");
-  audio.hammerStrike("precision");
-  setTimeout(() => {
-    if (!ui.upgrade.hidden && state.rewardType === "mutation") audio.hammerStrike("precision");
-  }, 280);
-  setTimeout(() => ui.upgrade.classList.remove("mutation-hammering"), 980);
 }
 
 function previewProjectilePosition(trajectory, progress, start, target, offset, time) {
