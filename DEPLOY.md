@@ -1,6 +1,6 @@
 # ROUGE HATE 网页长期部署
 
-本文是自有 Linux 服务器的备选方案，示例域名 `game.example.com` 必须替换成你实际拥有 DNS 权限的域名。GitHub 仓库直连 Render 的推荐方案见 [RENDER_DEPLOY.md](RENDER_DEPLOY.md)。
+本文适用于自有 Linux 服务器；示例域名 `game.example.com` 必须替换成你实际拥有 DNS 权限的域名。使用当前 Windows 电脑和公网 IP 直连的方案见 [WINDOWS_IP_DEPLOY.md](WINDOWS_IP_DEPLOY.md)。
 
 ## 部署后究竟会一直运行什么
 

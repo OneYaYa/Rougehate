@@ -83,8 +83,8 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 HOST = os.getenv("ROUGEHATE_HOST", "127.0.0.1")
-# Managed web hosts such as Render provide their listener through PORT. Keep the
-# project-specific variable as the local/self-hosted fallback.
+# Prefer a conventional PORT override when present. Keep the project-specific
+# variable as the local/self-hosted default.
 PORT = int(os.getenv("PORT") or os.getenv("ROUGEHATE_PORT", "8787"))
 AI_ENABLED = env_bool("ROUGEHATE_AI_ENABLED", True)
 TRUST_PROXY = env_bool("ROUGEHATE_TRUST_PROXY", False)

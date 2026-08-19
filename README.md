@@ -80,9 +80,7 @@ API Key 只由本地 Python 服务读取，不会进入浏览器。暂时不配�
 
 ## 发布到网页
 
-无需修改个人主页。推荐让 Render 直接连接本仓库并同时运行网页与 Python API；完整步骤见 [RENDER_DEPLOY.md](RENDER_DEPLOY.md)。自有 Linux 服务器的 Docker/Caddy 方案见 [DEPLOY.md](DEPLOY.md)。API Key 只保存在托管平台的秘密环境变量中，绝不能写入浏览器代码或 Git 仓库。
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FOneYaYa%2FRougehate)
+无需修改个人主页或使用第三方网页部署平台。可以让自己的 Windows 电脑通过公网 IP 直接提供游戏与 Python API，具体见 [WINDOWS_IP_DEPLOY.md](WINDOWS_IP_DEPLOY.md)。自有 Linux 服务器的 Docker/Caddy 方案见 [DEPLOY.md](DEPLOY.md)。API Key 只保存在服务器 `.env` 中，绝不能写入浏览器代码或 Git 仓库。
 
 ## 操作
 
