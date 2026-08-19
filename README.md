@@ -1,22 +1,30 @@
+<p align="center">
+  <a href="README.zh-CN.md">Simplified Chinese</a> · <strong>English</strong>
+</p>
+
 <div align="center">
-  <img src="assets/branding/rouge-hate-icon-256.png" width="168" alt="ROUGE HATE 游戏图标">
+  <img src="assets/branding/rouge-hate-icon-256.png" width="168" alt="ROUGE HATE game icon">
   <h1>ROUGE HATE</h1>
-  <p><strong>说出你的武器，在群星中活下来。</strong></p>
+  <p><strong>Speak your weapon. Survive the stars.</strong></p>
 </div>
 
-一款可以用自然语言创造角色、武器和异变的宇宙幸存者肉鸽网页游戏。
+A cosmic survivor roguelite where natural language creates characters, weapons, and mutations.
 
-![ROUGE HATE 实机宣传预览](assets/branding/rouge-hate-trailer-preview.gif)
+[![ROUGE HATE gameplay trailer](assets/branding/rouge-hate-trailer-preview.gif)](trailer-output/rouge-hate-gameplay-trailer-final.mp4)
 
-## 宣传设定图
+<p align="center">
+  <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ Watch / download the full 1080p trailer</strong></a>
+</p>
 
-![七位宇宙神祇立绘](assets/concepts/cosmic-patrons-roster.png)
+## Promotional Art
 
-![AI 宇宙武器概念图](assets/weapons/cosmic-weapon-concept-sheet-v2.png)
+![Seven cosmic patrons](assets/concepts/cosmic-patrons-roster.png)
 
-## 本地启动
+![AI cosmic weapon concepts](assets/weapons/cosmic-weapon-concept-sheet-v2.png)
 
-需要 Python 3.10 或更高版本，不需要安装 npm 或 pip 依赖。
+## Run Locally
+
+Requires Python 3.10 or newer. No npm or pip dependencies are required.
 
 ```powershell
 git clone https://github.com/OneYaYa/Rougehate.git
@@ -24,38 +32,39 @@ cd Rougehate
 python server.py
 ```
 
-浏览器打开 <http://127.0.0.1:8787>。不配置 API Key 也能完整游玩，生成内容会使用本地规则。
+Open <http://127.0.0.1:8787>. The complete game remains playable without an API key by using its local rule compiler.
 
-## 可选：启用 OpenAI 生成
+## Optional: Enable OpenAI Generation
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-在 `.env` 中填入专用的 `OPENAI_API_KEY`，然后重新运行 `python server.py`。`.env` 已被 Git 忽略，密钥只会由 Python 服务读取，不会发送到浏览器。
+Add a dedicated `OPENAI_API_KEY` to `.env`, then restart `python server.py`. Git ignores `.env`; the key is read only by the Python service and is never sent to the browser.
 
-## 部署到 Render
+## Deploy to Render
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/OneYaYa/Rougehate)
 
-1. 点击上方按钮，登录 Render 并授权读取本仓库。
-2. 在 Blueprint 页面填入 `OPENAI_API_KEY`。它是 Render 的秘密环境变量，不会写回 GitHub。
-3. 点击 **Deploy Blueprint**，完成后访问 Render 提供的 `onrender.com` 地址。
+1. Click the button, sign in to Render, and authorize access to this repository.
+2. Enter `OPENAI_API_KEY` on the Blueprint page. Render stores it as a secret environment variable and never writes it back to GitHub.
+3. Click **Deploy Blueprint**, then open the provided `onrender.com` URL.
 
-当前 [`render.yaml`](render.yaml) 使用免费 Web Service。免费服务空闲后会休眠，下次访问需要等待唤醒。如果需要持续在线，可以之后在 Render 中升级实例。
+The included [`render.yaml`](render.yaml) uses a free web service. Free services sleep after idle periods and wake on the next visit. You can upgrade the instance later if the site needs to remain continuously active.
 
-## 文件结构
+## Repository Layout
 
 ```text
 Rougehate/
-├─ assets/          # 游戏图像与 README 宣传图
-├─ index.html       # 页面结构
-├─ styles.css       # 页面样式
-├─ game.js          # 游戏逻辑
-├─ vfx-library.js   # 视觉效果配置
-├─ server.py        # 静态文件与 AI API 服务
+├─ assets/          # Runtime images and README promotional art
+├─ trailer-output/ # Published gameplay trailer
+├─ index.html       # Page structure
+├─ styles.css       # Page styles
+├─ game.js          # Game logic
+├─ vfx-library.js   # Visual-effect definitions
+├─ server.py        # Static-file and AI API server
 ├─ render.yaml      # Render Blueprint
-└─ .env.example     # 可选环境变量模板
+└─ .env.example     # Optional environment template
 ```
 
-玩家记录保存在各自浏览器的 `localStorage` 中，服务端不保存个人存档。
+Player records are stored in each browser's `localStorage`; the server does not store personal save data.
