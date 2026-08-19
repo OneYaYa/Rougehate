@@ -82,7 +82,11 @@ The local Python service is the only process that reads the API key. The browser
 
 ## Web Deployment
 
-For a self-managed Linux server with Docker and Caddy, see [Deployment](DEPLOY.md). Keep the API key in the server's `.env` file—never in browser code or Git.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/OneYaYa/Rougehate)
+
+The Render Blueprint uses a free web service and hosts both the game and its Python API. During setup, add `OPENAI_API_KEY` as a secret environment variable; it is never sent to the browser or committed to Git. Free services sleep after periods without traffic and wake on the next visit.
+
+For a self-managed Linux server with Docker and Caddy, see [Deployment](DEPLOY.md).
 
 ## Controls
 
