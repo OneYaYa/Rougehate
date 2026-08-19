@@ -15,6 +15,10 @@
   <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ Watch / download the full 1080p gameplay trailer</strong></a>
 </p>
 
+<p align="center">
+  <a href="https://rougehate-oneyaya.onrender.com"><strong>🎮 PLAY THE ONLINE DEMO</strong></a>
+</p>
+
 ## Your Words Become Weapons
 
 > Create a miniature star that devours every enemy on screen, then fractures into a lightning storm.

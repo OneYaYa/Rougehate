@@ -15,6 +15,10 @@
   <a href="trailer-output/rouge-hate-gameplay-trailer-final.mp4"><strong>▶ 观看 / 下载 1080p 完整实机宣传片</strong></a>
 </p>
 
+<p align="center">
+  <a href="https://rougehate-oneyaya.onrender.com"><strong>🎮 立即游玩在线 DEMO</strong></a>
+</p>
+
 ## 你的话，会变成武器
 
 > 创造一颗吞噬全屏敌人的微缩恒星，然后裂解成覆盖战场的雷暴。
