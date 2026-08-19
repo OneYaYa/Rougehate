@@ -2,7 +2,7 @@ services:
   - type: web
     name: rougehate-oneyaya
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: python -m compileall -q server.py
     startCommand: python server.py
     healthCheckPath: /api/health
