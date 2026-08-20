@@ -141,9 +141,12 @@ const visualMeta = {
 
 const STAGE_DURATION = 180;
 const RUN_DURATION = STAGE_DURATION * 3;
-const XP_REQUIREMENT_MULTIPLIER = 2.5;
+const XP_REQUIREMENT_MULTIPLIER = 2.5 * 1.5;
 const XP_GROWTH_EXPONENT = 1.40;
 const INITIAL_XP_NEED = Math.floor(24 * XP_REQUIREMENT_MULTIPLIER);
+const UPGRADE_EFFECT_REPEATS = 2;
+const MONSTER_CACHE_DROP_CHANCE = 0.05;
+const FINAL_BOSS_FORGE_DELAY = 10;
 const MUTATION_UPGRADE_INTERVAL = 4;
 const BOSS_TIMES = [160, 340, 520];
 const stages = [
@@ -155,7 +158,7 @@ const forgeTiers = [
   { tier: 1, roman: "I", budget: 72, label: "第一件异想", hint: "稳定、清晰地建立第一种攻击循环" },
   { tier: 2, roman: "II", budget: 104, label: "第二件异想", hint: "补齐短板，或与第一件武器形成状态协同" },
   { tier: 3, roman: "III", budget: 140, label: "第三件异想", hint: "Boss 2 瓦解后的高阶攻击手段" },
-  { tier: 4, roman: "IV", budget: 184, label: "绝境异想", hint: "终极 Boss 登场 15 秒后的最后构建" },
+  { tier: 4, roman: "IV", budget: 184, label: "绝境异想", hint: "终极 Boss 登场 10 秒后的最后构建" },
 ];
 const openingWaveSizes = [8];
 const stageHealthScales = [1.08, 1.62, 2.75];
@@ -179,25 +182,25 @@ const stageEliteSquads = [
     kicker: "MID-STAGE NEMESIS",
     title: "蓝幕双生执政官",
     members: [
-      { type: "shield_jelly", name: "蓝幕执政官·折光冠", hpScale: 3.4, radiusScale: 1.58, damageScale: 1.28, speedScale: .9, xpScale: 4.8, color: "#2edcff", accent: "#e2ffff", cacheChance: .34 },
-      { type: "pulse_wasp", name: "裂光蜂后·第七码", hpScale: 4, radiusScale: 1.72, damageScale: 1.35, speedScale: .82, xpScale: 5.2, color: "#ff4fd8", accent: "#fff0ff", cacheChance: .18 },
+      { type: "shield_jelly", name: "蓝幕执政官·折光冠", hpScale: 3.4, radiusScale: 1.58, damageScale: 1.28, speedScale: .9, xpScale: 4.8, color: "#2edcff", accent: "#e2ffff" },
+      { type: "pulse_wasp", name: "裂光蜂后·第七码", hpScale: 4, radiusScale: 1.72, damageScale: 1.35, speedScale: .82, xpScale: 5.2, color: "#ff4fd8", accent: "#fff0ff" },
     ],
   },
   {
     kicker: "MIGRATION ALPHAS",
     title: "迁徙母巢与攻城兽",
     members: [
-      { type: "spore_mother", name: "紫孢母皇·万巢", hpScale: 3.1, radiusScale: 1.56, damageScale: 1.3, speedScale: .88, xpScale: 4.6, color: "#b858f2", accent: "#ffd0ff", cacheChance: .32 },
-      { type: "void_boar", name: "赤核攻城兽·裂陆", hpScale: 3.35, radiusScale: 1.52, damageScale: 1.38, speedScale: 1.06, xpScale: 4.8, color: "#ff6657", accent: "#ffd06f", cacheChance: .2 },
+      { type: "spore_mother", name: "紫孢母皇·万巢", hpScale: 3.1, radiusScale: 1.56, damageScale: 1.3, speedScale: .88, xpScale: 4.6, color: "#b858f2", accent: "#ffd0ff" },
+      { type: "void_boar", name: "赤核攻城兽·裂陆", hpScale: 3.35, radiusScale: 1.52, damageScale: 1.38, speedScale: 1.06, xpScale: 4.8, color: "#ff6657", accent: "#ffd06f" },
     ],
   },
   {
     kicker: "HATEFUL TRIUMVIRATE",
     title: "奇点三重禁卫",
     members: [
-      { type: "thunder_orb", name: "雷鸣主星·赫兹", hpScale: 2.45, radiusScale: 1.42, damageScale: 1.3, speedScale: .92, xpScale: 4.2, color: "#ffc247", accent: "#fff4b0", cacheChance: .28 },
-      { type: "void_bulwark", name: "虚空禁卫·零号墙", hpScale: 2.85, radiusScale: 1.52, damageScale: 1.26, speedScale: .86, xpScale: 4.4, color: "#8d5dce", accent: "#ead8ff", cacheChance: .2 },
-      { type: "hate_weaver", name: "憎恨织主·红寂", hpScale: 3.05, radiusScale: 1.58, damageScale: 1.34, speedScale: .9, xpScale: 4.7, color: "#ff3f63", accent: "#ffd0db", cacheChance: .18 },
+      { type: "thunder_orb", name: "雷鸣主星·赫兹", hpScale: 2.45, radiusScale: 1.42, damageScale: 1.3, speedScale: .92, xpScale: 4.2, color: "#ffc247", accent: "#fff4b0" },
+      { type: "void_bulwark", name: "虚空禁卫·零号墙", hpScale: 2.85, radiusScale: 1.52, damageScale: 1.26, speedScale: .86, xpScale: 4.4, color: "#8d5dce", accent: "#ead8ff" },
+      { type: "hate_weaver", name: "憎恨织主·红寂", hpScale: 3.05, radiusScale: 1.58, damageScale: 1.34, speedScale: .9, xpScale: 4.7, color: "#ff3f63", accent: "#ffd0db" },
     ],
   },
 ];
@@ -276,6 +279,7 @@ class SynthAudio {
     this.scoreStep = 0;
     this.nextMusicAt = 0;
     this.nextAmbientAt = 0;
+    this.scoreHoldUntil = 0;
   }
 
   wake() {
@@ -305,6 +309,7 @@ class SynthAudio {
     this.scoreStep = 0;
     this.nextMusicAt = 0;
     this.nextAmbientAt = 0;
+    this.scoreHoldUntil = 0;
   }
 
   endScore() {
@@ -384,6 +389,7 @@ class SynthAudio {
     this.scoreMode = "idle";
     this.nextMusicAt = 0;
     this.nextAmbientAt = 0;
+    if (performance.now() < this.scoreHoldUntil) return;
     const root = [55, 65.41, 43.65][stageIndex] || 55;
     this.pad(root, 1.25, .009, "triangle", -5);
     this.pad(root * 1.5, 1.05, .005, "sine", 5);
@@ -399,6 +405,7 @@ class SynthAudio {
     if (!this.enabled || !gameState.running || gameState.paused) return;
     this.wake();
     if (!this.context || this.context.state !== "running") return;
+    if (performance.now() < this.scoreHoldUntil) return;
     const stageIndex = Math.max(0, Math.min(2, gameState.stageIndex || 0));
     const mode = boss ? `boss-${boss.bossIndex}` : `stage-${stageIndex}`;
     const now = performance.now();
@@ -594,6 +601,20 @@ class SynthAudio {
     const root = [70, 58, 44][Math.max(0, Math.min(2, index))];
     this.tone(root, .62, "sawtooth", .045, -18);
     this.pad(root * 1.5, .9, .011, "triangle", -8);
+  }
+  bossVictory(index = 0) {
+    const now = performance.now();
+    this.scoreMode = "boss-victory";
+    this.scoreHoldUntil = now + 2200;
+    this.nextMusicAt = this.scoreHoldUntil;
+    this.nextAmbientAt = this.scoreHoldUntil + 900;
+    const roots = [220, 196, 174.61];
+    const root = roots[Math.max(0, Math.min(2, index))];
+    this.pad(root / 2, 1.9, .012, "triangle", -4);
+    [0, 140, 300, 520, 760].forEach((delay, noteIndex) => setTimeout(() => {
+      const ratios = [1, 1.25, 1.5, 2, 2.5];
+      this.tone(root * ratios[noteIndex], .34, noteIndex < 3 ? "triangle" : "sine", .031 - noteIndex * .003, 75);
+    }, delay));
   }
   victory() {
     this.endScore();
@@ -1818,7 +1839,6 @@ function promoteEnemyToElite(enemy, profile = {}) {
   enemy.xp = Math.max(enemy.xp + 3, Math.round(enemy.xp * (Number(profile.xpScale) || 4.2)));
   enemy.color = profile.color || enemy.color;
   enemy.accent = profile.accent || enemy.accent;
-  enemy.eliteCacheChance = Math.max(0, Math.min(1, Number(profile.cacheChance) || .18));
   enemy.abilityTimer = Math.min(enemy.abilityTimer, .85 + Math.random() * .65);
   effects.push({ type: "ring", x: enemy.x, y: enemy.y, radius: enemy.radius * 1.75, color: enemy.accent, life: .72, maxLife: .72, source: "enemy" });
   return enemy;
@@ -2051,7 +2071,7 @@ function spawnBoss(index) {
   enemies.push(boss);
   currentBoss = boss;
   state.bossSpawned[index] = true;
-  if (index === 2) state.finalBossForgeAt = state.time + 15;
+  if (index === 2) state.finalBossForgeAt = state.time + FINAL_BOSS_FORGE_DELAY;
   const direction = compassDirection(angle);
   announce("THREAT DETECTED", `${template.name} · ${direction}侧接近`);
   addLog(`检测到高危意识体「${template.name}」，位于当前坐标${direction}侧。跟随屏幕箭头。`, true);
@@ -3085,14 +3105,22 @@ function killEnemy(enemy, weapon = null, proc = {}) {
   const missingHealth = 1 - player.hp / Math.max(1, player.maxHp);
   if (!enemy.boss && Math.random() < .025 + missingHealth * .055) pickups.push({ type: "heal", x: enemy.x + 8, y: enemy.y, value: 12, phase: Math.random() * Math.PI * 2 });
   if (!enemy.elite && !enemy.boss && Math.random() < .0035) pickups.push({ type: "cache", reward: "upgrade", x: enemy.x, y: enemy.y + 8, phase: Math.random() * Math.PI * 2 });
-  const eliteCacheChance = Number.isFinite(enemy.eliteCacheChance) ? enemy.eliteCacheChance : .5;
-  if (enemy.elite && Math.random() < eliteCacheChance) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, elite: true });
+  if (enemy.elite && !enemy.eventTarget && Math.random() < MONSTER_CACHE_DROP_CHANCE) {
+    pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, elite: true });
+  }
   if (enemy.eventTarget) {
     pickups.push({ type: "cache", reward: enemy.eventReward || "upgrade", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, mythic: enemy.eventReward === "artifact" });
     vacuumExperience("移动星核信使瓦解，认知与战利品正在回流");
     addLog("移动星核信使已截获，强化宝箱已暴露。", true);
   }
-  if (enemy.boss && enemy.bossIndex < 2) pickups.push({ type: "cache", reward: "artifact", x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2, mythic: true });
+  if (enemy.boss && enemy.bossIndex < 2) {
+    const forgeTier = enemy.bossIndex + 2;
+    pickups.push({
+      type: "cache", reward: "forge", tier: forgeTier,
+      x: enemy.x, y: enemy.y, phase: Math.random() * Math.PI * 2,
+      mythic: true, bossCache: true,
+    });
+  }
   burst(enemy.x, enemy.y, enemy.color, rareDrop ? 24 : 9, rareDrop ? 170 : 95);
   if (enemy.elite) addLog(`精英星兽「${enemy.speciesName}」已清除。高密度认知掉落。`, true);
   if (enemy.boss) {
@@ -3108,8 +3136,8 @@ function killEnemy(enemy, weapon = null, proc = {}) {
       player.invulnerable = 2;
       finishRun(true);
     } else if (enemy.bossIndex < 2) {
-      const nextForgeTier = enemy.bossIndex + 2;
-      if (!state.forgeOpened[nextForgeTier - 1]) queueReward("forge", nextForgeTier);
+      audio.bossVictory(enemy.bossIndex);
+      addLog("Boss 的武器核心已经凝成宝箱；靠近并拾取后才能进行 AI 武器重构。", true);
     }
   }
 }
@@ -3463,9 +3491,16 @@ function updatePickups(dt) {
       floatText(player.x, player.y - 28, `+${Math.round(healed)}`, "#67e86f", true);
       addLog(`拾取星兽血肉：恢复 ${Math.round(healed)} 生命。`);
     } else {
-      queueReward(pickup.reward || "upgrade");
-      announce(pickup.mythic ? "BOSS CACHE" : "ALIEN CACHE", pickup.reward === "artifact" ? "发现高级质变强化" : "发现强化宝箱");
-      addLog(pickup.reward === "artifact" ? "打开高密度宝箱：高级强化三选一。" : "打开异星宝箱：获得额外强化。", true);
+      const rewardType = pickup.reward || "upgrade";
+      queueReward(rewardType, pickup.tier || null);
+      if (rewardType === "forge") {
+        const forge = forgeTiers[Math.max(0, (pickup.tier || 1) - 1)];
+        announce("BOSS WEAPON CORE", `阶段 ${forge?.roman || pickup.tier} · AI 武器重构已解锁`);
+        addLog(`拾取 Boss 武器核心：阶段 ${forge?.roman || pickup.tier} AI 武器重构开始。`, true);
+      } else {
+        announce(pickup.mythic ? "BOSS CACHE" : "ALIEN CACHE", rewardType === "artifact" ? "发现高级质变强化" : "发现强化宝箱");
+        addLog(rewardType === "artifact" ? "打开高密度宝箱：高级强化三选一。" : "打开异星宝箱：获得额外强化。", true);
+      }
     }
     pickup.collected = true;
     audio.level();
@@ -3578,7 +3613,7 @@ function update(dt) {
   if (currentBoss?.bossIndex === 2 && state.finalBossForgeAt > 0 && state.time >= state.finalBossForgeAt && !state.forgeOpened[3]) {
     state.finalBossForgeAt = 0;
     announce("LAST FORGE", "终极意识暴露弱点 · 最后一次武器构建");
-    addLog("憎恨奇点现身 15 秒：第四次武器重构强制接入。", true);
+    addLog(`憎恨奇点现身 ${FINAL_BOSS_FORGE_DELAY} 秒：第四次武器重构强制接入。`, true);
     queueReward("forge", 4);
   }
 
@@ -5772,13 +5807,15 @@ function upgradeBelongsToPatron(upgrade, patronId) {
 }
 
 function asPatronBoon(upgrade, patronId) {
-  if (patronIdForUpgrade(upgrade) === patronId) return upgrade;
   const patron = patronDefinitions[patronId];
+  const family = upgradeFamilyBlueprints.find((item) => item.id === patronId);
+  const nativeBoon = patronIdForUpgrade(upgrade) === patronId;
   return {
     ...upgrade,
     patron: patronId,
-    offerType: "boon",
-    family: `星神祝福 · ${patron?.name || patronId}`,
+    icon: family?.icon || patronSigils[patronId] || upgrade.icon,
+    offerType: nativeBoon ? upgrade.offerType || "boon" : "boon",
+    family: nativeBoon ? upgrade.family : `星神祝福 · ${patron?.name || patronId}`,
   };
 }
 
@@ -5830,7 +5867,7 @@ function availablePatronUpgrades(patronId, artifact = false) {
     choices.push(makePomChoice(asPatronBoon(next, patronId)));
     deepenPool = deepenPool.filter((upgrade) => upgrade !== next);
   }
-  return choices;
+  return choices.map((choice) => asPatronBoon(choice, patronId));
 }
 
 function availableRelicUpgrades(artifact = false) {
@@ -5899,13 +5936,13 @@ async function openUpgrade(type = "upgrade") {
     ui.upgrade.style.setProperty("--offer-accent", patron.accent);
     ui.upgradeChapter.textContent = `ASTRAL BOON / ${patron.name}的祝福`;
     ui.upgradeTitle.textContent = `${patron.name}赐下三份祝福`;
-    ui.upgradeSubtitle.textContent = `“${patron.epithet}。” · 本次三项全部来自同一位星神，选择一项带走。`;
+    ui.upgradeSubtitle.textContent = `“${patron.epithet}。” · 本次三项全部来自同一位星神，祝福效能 ×${UPGRADE_EFFECT_REPEATS}。`;
   } else {
     ui.upgradeChapter.textContent = type === "artifact" ? "BOSS CACHE / 危险遗物" : "LEVEL UP / 漂流遗物";
     ui.upgradeTitle.textContent = type === "artifact" ? "从尸体里拿走一样东西" : "选择一件漂流遗物";
     ui.upgradeSubtitle.textContent = type === "artifact"
-      ? "Boss 遗物池更危险，也更容易出现史诗与传奇遗物。"
-      : `遗物牌库 ${upgrades.length} 件 · 本局星神 ${state.activePatrons.size}/${PATRON_LIMIT} · 每第 ${MUTATION_UPGRADE_INTERVAL} 次升级进入武器异梦`;
+      ? `Boss 遗物池更危险，也更容易出现史诗与传奇遗物 · 强化效能 ×${UPGRADE_EFFECT_REPEATS}`
+      : `遗物牌库 ${upgrades.length} 件 · 强化效能 ×${UPGRADE_EFFECT_REPEATS} · 本局星神 ${state.activePatrons.size}/${PATRON_LIMIT} · 每第 ${MUTATION_UPGRADE_INTERVAL} 次升级进入武器异梦`;
   }
   renderUpgradeChoices();
   if (currentUpgradePatron) {
@@ -5925,15 +5962,21 @@ async function openUpgrade(type = "upgrade") {
   requestAnimationFrame(() => ui.upgrade.classList.add("offer-revealed"));
 }
 
+function createMutationHammerIcon() {
+  const icon = document.createElement("span");
+  icon.className = "upgrade-icon mutation-hammer-icon";
+  icon.setAttribute("role", "img");
+  icon.setAttribute("aria-label", "武器异梦锻造锤");
+  return icon;
+}
+
 function renderMutationLoading() {
   stopMutationPreview();
   ui.upgradeOptions.replaceChildren();
   const card = document.createElement("article");
   card.className = "upgrade-card mutation-loading-card";
   card.style.setProperty("--rarity-color", "#b8c2ce");
-  const icon = document.createElement("span");
-  icon.className = "upgrade-icon mutation-forge-icon";
-  icon.setAttribute("aria-label", "武器异梦");
+  const icon = createMutationHammerIcon();
   const label = document.createElement("span");
   label.className = "upgrade-rarity";
   label.textContent = "WEAPON DREAM / 武器异梦";
@@ -6110,9 +6153,7 @@ function renderMutationChoices() {
     const number = document.createElement("span");
     number.className = "upgrade-number";
     number.textContent = `0${index + 1}`;
-    const icon = document.createElement("span");
-    icon.className = "upgrade-icon mutation-forge-icon";
-    icon.setAttribute("aria-label", "武器异梦");
+    const icon = createMutationHammerIcon();
     const rarity = document.createElement("span");
     rarity.className = "upgrade-rarity";
     rarity.textContent = "AI FORGE / 金属异变";
@@ -6217,7 +6258,7 @@ function renderUpgradeChoices() {
   ui.upgradeOptions.replaceChildren();
   currentUpgradeChoices.forEach((upgrade, index) => {
     const rarity = rarityMeta[upgrade.rarity];
-    const patronId = patronIdForUpgrade(upgrade);
+    const patronId = currentUpgradePatron || patronIdForUpgrade(upgrade);
     const patron = patronDefinitions[patronId];
     const levelId = upgrade.baseId || upgrade.id;
     const level = upgradeLevels[levelId] || 0;
@@ -6266,7 +6307,7 @@ function renderUpgradeChoices() {
     const title = document.createElement("h3");
     title.textContent = upgrade.title;
     const description = document.createElement("p");
-    description.textContent = upgrade.description;
+    description.textContent = `${upgrade.description} · 本次效果结算 ${UPGRADE_EFFECT_REPEATS} 次。`;
     const levels = document.createElement("div");
     levels.className = "upgrade-levels";
     for (let dot = 0; dot < upgrade.max; dot += 1) {
@@ -6290,7 +6331,7 @@ async function selectUpgrade(id) {
   ui.upgradeOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
   try {
     const levelId = upgrade.baseId || upgrade.id;
-    upgrade.apply();
+    for (let repeat = 0; repeat < UPGRADE_EFFECT_REPEATS; repeat += 1) upgrade.apply();
     upgradeLevels[levelId] = (upgradeLevels[levelId] || 0) + 1;
     const patronId = patronIdForUpgrade(upgrade);
     if (patronId) state.activePatrons.add(patronId);
